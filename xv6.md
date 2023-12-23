@@ -155,7 +155,7 @@ userinit        内核空间 -> 用户空间
 
 一个 `page table` 最大为 $2^{27}$ ，物理地址最大为 $2^{56}$
 
-<img src="C:\Users\tyl\Desktop\2022下半年\计网\img\assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKKjB2an4WcuUmOlE__%2F-MKPwJezGQDkWaLDRuDs%2Fimage.png" alt="img" style="zoom: 33%;" />
+<img src="img\assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKKjB2an4WcuUmOlE__%2F-MKPwJezGQDkWaLDRuDs%2Fimage.png" alt="img" style="zoom: 33%;" />
 
 `SATP` 寄存器会指向最高一级的 `page directory` 的物理内存地址，之后我们用虚拟内存中 `index` 的高 `9bit` 用来索引最高一级的 `page directory`，这样我们就能得到一个`PPN`，也就是物理 `page` 号。这个 `PPN` 指向了中间级的 `page directory`。
 
@@ -169,7 +169,7 @@ userinit        内核空间 -> 用户空间
 
 主板上电后，第一、件事情是运行存储在 `boot ROM` 的代码，`boot` 完成后跳转到地址 `0x80000000`，
 
-<img src="C:\Users\tyl\Desktop\2022下半年\计网\img\assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MK_UbCc81Y4Idzn55t8%2F-MKaY9xY8MaH5XTiwuBm%2Fimage.png" alt="img" style="zoom:50%;" />
+<img src="img\assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MK_UbCc81Y4Idzn55t8%2F-MKaY9xY8MaH5XTiwuBm%2Fimage.png" alt="img" style="zoom:50%;" />
 
 #### `kvminit`（物理地址）
 
@@ -214,7 +214,7 @@ w_satp(MAKE_SATP(kernel_pagetable));
 
 #### `Trap` 代码执行流程
 
-![image-20231121145632161](C:\Users\tyl\Desktop\2022下半年\计网\img\image-20231121145632161.png)
+![image-20231121145632161](img\image-20231121145632161.png)
 
 #### `uservec`
 
@@ -440,7 +440,7 @@ disk
 
 ##### XV6 布局节构
 
-![img](C:\Users\tyl\Desktop\2022下半年\计网\img\assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MRhzbAZwhuzp63wWdRE%2F-MRielGcbrHOzPCrxHcO%2Fimage.png)
+![img](img\assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MRhzbAZwhuzp63wWdRE%2F-MRielGcbrHOzPCrxHcO%2Fimage.png)
 
 `block0` 要么没有用，要么被用作 `boot sector` 来启动操作系统。
 
@@ -470,7 +470,7 @@ disk
 
 之后还有一个 `indirect block number`，它对应了磁盘上一个 `block`，这个 `block` 包含了 `256` 个 `block number`，这 `256` 个 `block number` 包含了文件的数据。所以 `inode` 中 `block number 0` 到 `block number 11` 都是 `direct block number`，而 `block number 12` 保存的 `indirect block number` 指向了另一个 `block`。
 
-<img src="C:\Users\tyl\Desktop\2022下半年\计网\img\E953D39EE3CBE32FE75817D99BECA595.jpg" alt="img" style="zoom:50%;" />
+<img src="img\E953D39EE3CBE32FE75817D99BECA595.jpg" alt="img" style="zoom:50%;" />
 
 ##### 目录结构
 
@@ -501,7 +501,7 @@ disk
 
 * 第三阶段将“\n”换行符写入到文件
 
-![image-20231202183359475](C:\Users\tyl\Desktop\2022下半年\计网\img\image-20231202183359475.png)
+![image-20231202183359475](img\image-20231202183359475.png)
 
 ##### 创建文件
 
@@ -565,7 +565,7 @@ acquiresleeplock(struct sleeplock* lk) {
 
 最开始有一个 header block，里面数字 n 代表有效 block 数量，接下来 n 个 log block 里面是 block 的编号
 
-![img](C:\Users\tyl\Desktop\2022下半年\计网\img\419141D7F20C2D762492866987F80233.jpg)
+![img](img\419141D7F20C2D762492866987F80233.jpg)
 
 #### log write 函数
 
