@@ -1,3 +1,3 @@
 # LevelDB
 
-![img](img\kvstore_leveldb_kyotocabinet_small.jpg)
+![img](..\img\kvstore_leveldb_kyotocabinet_small.jpg)

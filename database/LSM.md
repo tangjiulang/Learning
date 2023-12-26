@@ -14,7 +14,7 @@
 
 ## LSM 组成
 
-<img src="img\793413-20201025165206001-1985214304.png" alt="LSM 树详解- -Finley- - 博客园" style="zoom:50%;" />
+<img src="..\img\793413-20201025165206001-1985214304.png" alt="LSM 树详解- -Finley- - 博客园" style="zoom:50%;" />
 
 #### `memtable`
 
@@ -57,7 +57,7 @@ STCS 能有效的减少 `SSTable` 的数量，同一份数据在 `Compact` 期�
 
 我们假设所有的操作都是插入一个新数，我们假设，`SSTable` 每 2 个会触发一次 `Compact`，`Memtable` 的大小也是 2，假如我们插入 8 个数
 
-![image-20231223151546997](img/image-20231223151546997.png)
+![image-20231223151546997](..\img/image-20231223151546997.png)
 
 最后得到的 `SSTable`， 几次 `Compact` 中我们需要一共 24 个块来保存数，最多同时存在 16 个数据块，大大超过了原有数据所占空间，导致了空间放大
 
@@ -65,7 +65,7 @@ STCS 能有效的减少 `SSTable` 的数量，同一份数据在 `Compact` 期�
 
 同时，如果我们每次 `memtable` 的数据都是一样的
 
-![image-20231223154324007](img/image-20231223154324007.png)
+![image-20231223154324007](..\img/image-20231223154324007.png)
 
 此时，我们对于同样的数据，有三个不同的副本，并且不能进行 `Compact`，这就导致了大量的空间被浪费，所以对于覆盖写较少的场景，STCS 的空间放大尚可接受；但是对于覆盖写频繁的场景，STCS 便不再是一个很好的选择。
 
@@ -81,7 +81,7 @@ LCS除了 L0 之外，每层文件的总大小成指数增长，L1 是 10 个，
 
 LCS 的工作原理如下图所示：
 
-<img src="img/0HC8TdP7PGENRCRe-.png" alt="Getting Started with LSM Compaction Mechanism | Medium" style="zoom:50%;" />
+<img src="..\img/0HC8TdP7PGENRCRe-.png" alt="Getting Started with LSM Compaction Mechanism | Medium" style="zoom:50%;" />
 
 内存中 `memtable` 转到 L0 中，然后 L0 达到一定阈值之后，将 L0 的所有文件和与 L1 有覆盖的文件进行合并，然后生成新文件（如果文件大小超过阈值，会切成多个）到 L1，L1 中的文件时全局有序的，不会出现重叠的情况；
 
@@ -105,3 +105,5 @@ LCS 的工作原理如下图所示：
 LCS 虽然解决了空间放大，但是也引入了另一个问题 -- **写入放大**
 
 如果一个数据要被写入到 L4 的话，就会被写入 6 次，分别是 L0，L1，L2，L3，L4，WAL
+
+#### 并发控制和恢复
