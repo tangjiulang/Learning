@@ -22,7 +22,7 @@ SSD 优化：有效地利用了顺序写入和并行随机读取，以便应用�
 
 ## 键值分离
 
-![WiscKey -- Separating Keys from Values in SSD-conscious Storage · Columba  M71's Blog](..\img\wisckey-layout.png)
+![WiscKey -- Separating Keys from Values in SSD-conscious Storage · Columba  M71's Blog](../img/wisckey-layout.png)
 
 由于 `key` 的大小小于 `value`，导致 Wisckey 的 LSM 树会小于 LevelDB 的 LSM 树，搜索一个信息搜索的表文件更少，并且由于 `<key，addr>` 比 `<key，value>` 小，所以缓存中可以存更多的 `<key，addr>` 键值对，通过这个可以优化读取。
 
@@ -44,7 +44,7 @@ SSD 优化：有效地利用了顺序写入和并行随机读取，以便应用�
 
 在 `vLog` 中存储值的同时，我们还将相应的密钥与值一起存储。新的数据布局如图5所示：元组（密钥大小、值大小、密钥、值）存储在 `vLog` 中。
 
-![Key Value分离](..\img/kv_split.png)
+![Key Value分离](../img/kv_split.png)
 
 垃圾收集的时候，每次会从 `vLog` 的尾部读取一大块键值对，然后通过 LSM 查找多少键值对是有效的，将有效值添加到 `vLog` 的头部，然后释放之前占用的内存，并且更新尾部信息
 
