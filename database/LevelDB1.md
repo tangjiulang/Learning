@@ -179,118 +179,62 @@ struct LEVELDB_EXPORT WriteOptions {
 5. `kMaxMemCompactLevel`：新压缩产生的 SSTable 允许最多推送至几层(目标层不允许重叠)，默认为 2
 6. `kReadBytesPeriod`：在数据迭代的过程中，也会检查是否满足压缩条件，该参数控制读取的最大字节数
 7. `MaxBytesForLevel` 函数：每一层容量大小为上一层的 10 倍
-8. `MaxGrandParentOverlapBytes`：$level - n$ 和 $leveldb-n+2$ 之间重叠的字节数，默认大小为 $10*max_file_size$
+8. `MaxGrandParentOverlapBytes`：$level - n$ 和 $leveldb-n+2$ 之间重叠的字节数，默认大小为 $10*max\_file\_size$
 
 #### SkipList
 
 LevelDB 的线段跳表
 
+##### Node
+
 ```cpp
-template <typename Key, class Comparator>
-class SkipList {
- private:
-  struct Node;
- public:
-  
-   private:
-    const SkipList* list_;
-    Node* node_;
-    // Intentionally copyable
-  };
-
- private:
-  enum { kMaxHeight = 12 };
-
-  inline int GetMaxHeight() const {
-    return max_height_.load(std::memory_order_relaxed);
-  }
-
-  Node* NewNode(const Key& key, int height);
-  int RandomHeight();
-  bool Equal(const Key& a, const Key& b) const { return (compare_(a, b) == 0); }
-
-  // Return true if key is greater than the data stored in "n"
-  bool KeyIsAfterNode(const Key& key, Node* n) const;
-
-  // Return the earliest node that comes at or after key.
-  // Return nullptr if there is no such node.
-  //
-  // If prev is non-null, fills prev[level] with pointer to previous
-  // node at "level" for every level in [0..max_height_-1].
-  Node* FindGreaterOrEqual(const Key& key, Node** prev) const;
-
-  // Return the latest node with a key < key.
-  // Return head_ if there is no such node.
-  Node* FindLessThan(const Key& key) const;
-
-  // Return the last node in the list.
-  // Return head_ if list is empty.
-  Node* FindLast() const;
-
-  // Immutable after construction
-  Comparator const compare_;
-  Arena* const arena_;  // Arena used for allocations of nodes
-
-  Node* const head_;
-
-  // Modified only by Insert().  Read racily by readers, but stale
-  // values are ok.
-  std::atomic<int> max_height_;  // Height of the entire list
-
-  // Read/written only by Insert().
-  Random rnd_;
-};
-
-
-// Implementation details follow
 template <typename Key, class Comparator>
 struct SkipList<Key, Comparator>::Node {
   explicit Node(const Key& k) : key(k) {}
-
   Key const key;
+  Node* Next(int n);
+  void SetNext(int n, Node* x);
 
-  // Accessors/mutators for links.  Wrapped in methods so we can
-  // add the appropriate barriers as necessary.
-  Node* Next(int n) {
-    assert(n >= 0);
-    // Use an 'acquire load' so that we observe a fully initialized
-    // version of the returned Node.
-    return next_[n].load(std::memory_order_acquire);
-  }
-  void SetNext(int n, Node* x) {
-    assert(n >= 0);
-    // Use a 'release store' so that anybody who reads through this
-    // pointer observes a fully initialized version of the inserted node.
-    next_[n].store(x, std::memory_order_release);
-  }
-
-  // No-barrier variants that can be safely used in a few locations.
-  Node* NoBarrier_Next(int n) {
-    assert(n >= 0);
-    return next_[n].load(std::memory_order_relaxed);
-  }
-  void NoBarrier_SetNext(int n, Node* x) {
-    assert(n >= 0);
-    next_[n].store(x, std::memory_order_relaxed);
-  }
-
+  Node* NoBarrier_Next(int n);
+  void NoBarrier_SetNext(int n, Node* x);
  private:
-  // Array of length equal to the node height.  next_[0] is lowest level link.
-  //1.这里提前使用声明分配1个对象的内存，是因为，第0层数据肯定是都有的，而且，是全部数据
-  //2.使用数组方式，那么后续分配的内存就是连续的，cache-friend
-  std::atomic<Node*> next_[1]; //atomic保证原子性
+  std::atomic<Node*> next_[1];
 };
-
-
-template <typename Key, class Comparator>
-typename SkipList<Key, Comparator>::Node* SkipList<Key, Comparator>::NewNode(
-    const Key& key, int height) {
-  //仔细想想，这个为啥是level-1？？？
-  //答案：前面已经给你分配了一层了
-  char* const node_memory = arena_->AllocateAligned(
-      sizeof(Node) + sizeof(std::atomic<Node*>) * (height - 1));
-  //这个是定位new写法
-  return new (node_memory) Node(key);
-}
 ```
 
+在 `Skiplist` 中，`Node` 代表的是跳表中的节点
+
+结构体包含两个变量，当前节点的 Key 值和指向下一个节点的 `next_[1]`
+
+结构体包含了四个方法 `Next、SetNext、NoBarrier_Next、NoBarrier_SetNext`。前两个方法对应加载与读取（内存使用 `barrier` 按需进行），后两个方案对应非屏障方案（可以乱序执行）加载与读取。这四种方案均对 `next_[1]` 进行操作。
+
+##### Iterator
+
+`Skiplist` 中的工具类
+
+```cpp
+class Iterator {
+   public:
+    explicit Iterator(const SkipList* list);
+    bool Valid() const;
+    const Key& key() const;
+    void Next();
+    void Prev();
+    void Seek(const Key& target);
+    void SeekToFirst();
+    void SeekToLast();
+   private:
+    const SkipList* list_;
+    Node* node_;
+  };
+```
+
+有两个成员变量，SkipList 和当前 Node
+
+##### Skiplist
+
+抛开 Iterator 后，和普通的 Skiplist 一样，从 level 高的地方开始找，没找到就跳下一个，下一个如果大于要找的值或者没有下一个，level 就下一层，重复上面的步骤直到找到或者 level == 0 停止
+
+插入的时候会随机一个 height 值，这个值代表 node 的高度，和查询相似，但是每次在 level 要减一的时候，我们会将当前 node 保存起来，在找到最后一个的时候，再从下往上一层一层的添加到 node 的后面。
+
+删除类似插入，找到所有下一层是我们删除的 node 的节点 pre，然后将 pre.next = node.next，然后直到 level == 0，将 node[n] 回收
