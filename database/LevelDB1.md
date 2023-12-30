@@ -238,3 +238,116 @@ class Iterator {
 插入的时候会随机一个 height 值，这个值代表 node 的高度，和查询相似，但是每次在 level 要减一的时候，我们会将当前 node 保存起来，在找到最后一个的时候，再从下往上一层一层的添加到 node 的后面。
 
 删除类似插入，找到所有下一层是我们删除的 node 的节点 pre，然后将 pre.next = node.next，然后直到 level == 0，将 node[n] 回收
+
+#### 内存管理
+
+##### 成员变量
+
+- `alloc_ptr_`：当前已使用内存的指针
+
+- `blocks_`：实际分配的内存池
+
+- `alloc_bytes_remaining_`：剩余内存字节数
+
+- `memory_usage_`：记录内存的使用情况
+
+- `kBlockSize`：一个块大小(4k)
+
+#### 成员函数
+
+需要注意的是 `AllocateFallback` 函数
+
+```cpp
+char* Arena::AllocateFallback(size_t bytes) {
+  if (bytes > kBlockSize / 4) {
+    char* result = AllocateNewBlock(bytes);
+    return result;
+  }
+
+  alloc_ptr_ = AllocateNewBlock(kBlockSize);
+  alloc_bytes_remaining_ = kBlockSize;
+
+  char* result = alloc_ptr_;
+  alloc_ptr_ += bytes;
+  alloc_bytes_remaining_ -= bytes;
+  return result;
+}
+```
+
+当 `bytes` 大于 `kBlockSize/4` 时，是大内存，如果我们直接分配一个 `Block` 的话，那么剩下剩下的空位比较小，那么此 `Block` 复用次数比较少，并且此时可能有 `1/4` 的左侧资源被浪费，所以选择按需分配
+
+当 `bytes` 小于 `kBlockSize/4` 时，此时新开一个 `Block`，既可以大量复用，又可以减少左侧资源的浪费
+
+左侧资源指当前 `Block` 的 `alloc_bytes_remaining_`
+
+#### 引用计数
+
+引用计数是一种内存管理方式。在 LevelDB 中，`memtable/version` 等组件，可能被多个线程共享，因此不能直接删除，需要等到没有线程占用时，才能删除。
+
+#### 各种 key 和 compare
+
+##### 各种 key
+
+- `user_key`：用户输入的数据 `key`(`slice` 格式)
+
+- `ParsedInternalKey`：
+
+  - 是对`InternalKey`的解析，因为`InternalKey`是一个字符串
+
+  - `Slice user_key`;
+
+  - `SequenceNumber sequence`
+
+  -   `ValueType type`
+
+- InternalKey：
+
+  - 内部 `key`，常用来比如 `key` 比较等场景
+
+  - `std::string rep_`
+
+- `memtable key`：
+  - 故名思义：存储在 `memtable` 中的 `key`，这个 `key` 比较特殊他是包含 `value` 的
+
+- `lookup key`：
+
+  - 用于 `DBImpl::Get` 中
+
+  - 成员变量
+
+    - `char space_[200]`，`lookup` 中有一个细小的内存优化，就是类似 `string` 的 `sso` 优化。其优化在于，当字符串较短时，直接将其数据存在栈中，而不去堆中动态申请空间，这就避免了申请堆空间所需的开销。
+
+    - `const char* start_`
+
+    - `const char* kstart_;`
+
+    - `const char* end_;`
+
+关系如下图所示
+
+<img src="../img/f919f5bb-7a17-4edb-918b-1d98edd3e01f.png" style="zoom:50%;" />
+
+##### 各种 compare
+
+##### 成员函数
+
+- `Compare()`：支持三种操作：大于/等于/小于
+
+- `Name()` ：比较器名字，以 LevelDB 开头
+
+- `FindShortestSeparator`：
+
+  - 这些功能用于减少索引块等内部数据结构的空间需求。
+
+  - 如果 `*start < limit`，则将 `*start` 更改为 `[start,limit)` 中的短字符串。
+
+  - 简单的比较器实现可能会以 `*start` 不变返回，即此方法的实现不执行任何操作也是正确的。
+
+  - 然后在调用 `Compare` 函数
+
+- `FindShortSuccessor`：将 `*key` 更改为 `string >= *key.Simple` 比较器实现可能会在 `*key` 不变的情况下返回，即，此方法的实现是正确的。
+
+特点：必须要支持线程安全
+
+#### WriteBatch
+
