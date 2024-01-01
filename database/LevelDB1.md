@@ -329,7 +329,7 @@ char* Arena::AllocateFallback(size_t bytes) {
 
 ##### 各种 compare
 
-##### 成员函数
+###### 成员函数
 
 - `Compare()`：支持三种操作：大于/等于/小于
 
@@ -350,4 +350,30 @@ char* Arena::AllocateFallback(size_t bytes) {
 特点：必须要支持线程安全
 
 #### WriteBatch
+
+WriteBatch 使用批量写来提高性能，支持 put 和 delete。
+
+##### 成员变量
+
+- `rep_`：WriteBatch 具体数据
+
+- `WriteBatchInternal`：内部工具性质的辅助类
+
+##### 成员函数
+
+- `Put`：存储 `key` 和 `value` 信息
+
+- `Delete`：追加删除 `key` 信息
+
+- `Append`：多个 WriteBatch 还可以继续合并
+
+- `Iterate`：
+
+  - 遍历该 `batch` 结构，为了方便扩展，参数使用的是 `Handler` 基类，对应的是抽象工厂模式
+
+  - `MemTableInserter` 子类：对 `memtable` 的操作
+
+- `ApproximateSize`：内存状态信息
+
+![](../img/image.png)
 
