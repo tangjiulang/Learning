@@ -377,3 +377,282 @@ WriteBatch 使用批量写来提高性能，支持 put 和 delete。
 
 ![](../img/image.png)
 
+这里运用了两个技巧 `b->rep_.data()+8` 和 `&b->rep_[8]`
+
+其中前一个是去掉 `rep_` 中的 `SeqNum` 字段，但是是只读，后面一个是将 `SeqNum` 后面转换成 `char*` 传入 `EncodeFixed32` 对数字 `n` 进行编码
+
+重点讲解一下 `Iterate`
+
+```cpp
+Status WriteBatch::Iterate(Handler* handler) const {
+  Slice input(rep_);
+  if (input.size() < kHeader) {
+    return Status::Corruption("malformed WriteBatch (too small)");
+  }
+// 删除 SeqNum 还有 key number
+  input.remove_prefix(kHeader);
+  Slice key, value;
+  int found = 0;
+  while (!input.empty()) {
+    found++;
+    // 解析当前的 key value 状态，[kTypeValue, kTypeDeletion]
+    char tag = input[0];
+    // 取出来了，直接删除
+    input.remove_prefix(1);
+    switch (tag) {
+      case kTypeValue:
+        if (GetLengthPrefixedSlice(&input, &key) &&
+            GetLengthPrefixedSlice(&input, &value)) {
+          // 插入到 memtable 内
+          handler->Put(key, value);
+        } else {
+          return Status::Corruption("bad WriteBatch Put");
+        }
+        break;
+      case kTypeDeletion:
+        if (GetLengthPrefixedSlice(&input, &key)) {
+          handler->Delete(key);
+        } else {
+          return Status::Corruption("bad WriteBatch Delete");
+        }
+        break;
+      default:
+        return Status::Corruption("unknown WriteBatch tag");
+    }
+  }
+  if (found != WriteBatchInternal::Count(this)) {
+    return Status::Corruption("WriteBatch has wrong count");
+  } else {
+    return Status::OK();
+  }
+}
+```
+
+#### Env 家族
+
+<img src="../img/c7cc89ec-b621-4bd6-9eb9-da89005ef598.png" style="zoom:50%;" />
+
+由上图可知，该内就是一个纯虚类
+
+`New` 开头的成员函数，其 `Status` 表示函数执行状态，而实际生成的对象是在函数的第二个参数，现代 `C++` 不建议这样操作。
+
+最好利用现代 `C++` 的移动语义，并且将传入参数设置为 `const`
+
+有三个实现版本
+
+##### `PosixEnv`
+
+封装了 `posix` 标准下所有接口
+
+##### `WindowsEnv`
+
+封装了 `win` 相关接口
+
+##### `EnvWrapper`
+
+虽然该类也继承 `Env`，但是他和上述两个作用不一样
+
+将所有调用转发到其他的 `Env` 实现。
+
+可能对希望覆盖另一个 `Env` 的部分功能的用户有用。
+
+默认还是使用 `Env` 实现类
+
+了解 `EnvWrapper` 前，我们先了解一下代理设计模式
+
+###### 代理设计模式
+
+有些时候，我们想做一些事但是自己没有资源或者自己做不好，就会想着花点钱请专业的人帮我们做。这是一种代理模式。
+
+我是一个用户，我现在需要保洁服务，那么我就需要联系保洁公司，让他们安排相关的专员来帮我完成这件事。
+
+##### `WritableFile & PosixWritableFile`
+
+###### `WritableFile`
+
+用于顺序写入的文件抽象。 实现必须提供缓冲，因为调用者可能一次将小数据量数据追加到文件中。`WritableFile` 是里面的函数都是纯虚函数。
+
+`WritableFileImpl` 是 `WritableFile` 的具体实现，主要利用成员 `FileState*` 进行工作
+
+```cpp
+class WritableFileImpl : public WritableFile {
+ public:
+  WritableFileImpl(FileState* file) : file_(file) { file_->Ref(); }
+  ~WritableFileImpl() override { file_->Unref(); }
+  Status Append(const Slice& data) override { return file_->Append(data); }
+  Status Close() override { return Status::OK(); }
+  Status Flush() override { return Status::OK(); }
+  Status Sync() override { return Status::OK(); }
+
+ private:
+  FileState* file_;
+};
+```
+
+其中 `FileState` 的 `Ref` 和 `Unref` 都是简单的引用计数操作，`Append` 就是将 `Slice` 插入到文件末尾，并且根据 `BlockSize` 分块
+
+######  `PosixWritableFile`
+
+```cpp
+class PosixWritableFile final : public WritableFile;
+```
+
+**成员变量**
+
+* `kWritableFileBufferSize`：作为缓冲区，默认大小为 64k
+* `char buf_[kWritableFileBufferSize]`
+* `pos_`：`buf_` 当前已经使用的字节位置
+* `fd_`：当前文件，对应的 fd
+* `is_manifest_`：判断是否是 `manifest` 文件，因为 `manifest` 文件需要实时刷盘
+* `filename_`：文件名字
+* `dirname_`：文件所在的目录
+
+**成员函数**
+
+```cpp
+Status Append(const Slice& data) override {
+    size_t write_size = data.size();
+    const char* write_data = data.data();
+
+    size_t copy_size = std::min(write_size, kWritableFileBufferSize - pos_);
+    // 当前 buffer 所能写入的最大 size
+    std::memcpy(buf_ + pos_, write_data, copy_size);
+    write_data += copy_size;
+    write_size -= copy_size;
+    pos_ += copy_size;
+    if (write_size == 0) {
+    	return Status::OK();
+    }
+    
+    // kWritableFileBufferSize - pos_ < write_size
+	Status status = FlushBuffer();
+	// 将满的 buffer 刷入磁盘中，并将 Buffer 置为空
+    if (!status.ok()) {
+    	return status;
+    }
+
+    if (write_size < kWritableFileBufferSize) {
+        std::memcpy(buf_, write_data, write_size);
+        pos_ = write_size;
+        return Status::OK();
+    }
+    return WriteUnbuffered(write_data, write_size);
+}
+```
+
+##### `RandomAccessFile&PosixRandomAccessFile/PosixMmapReadableFile`
+
+###### `Limiter`
+
+1. `Helper` 类限制资源使用，避免耗尽。目前用于限制只读文件描述符和 `mmap` 文件使用，这样我们就不会用完文件描述符或虚拟内存，或者遇到非常大的数据库的内核性能问题。
+2. 使用 `atomic` 原子变量，所以线程安全
+
+###### `RandomAccessFile`
+
+`RandomAccessFile` 用于随机读取文件内容的文件抽象。
+
+线程安全。
+
+###### `PosixRandomAccessFile`
+
+```cpp
+class PosixRandomAccessFile final : public RandomAccessFile;
+```
+
+**成员变量**
+
+- `has_permanent_fd_`：表示是否每次 `read` 都需要打开文件
+
+- `fd_`：`has_permanent_fd_=false`，`fd_` 一直等于 -1
+
+- `fd_limiter_`：资源限制相关的
+
+- `filename_`：文件名
+
+**成员函数**
+
+简单的构造函数还有析构函数，以及 `Read` 函数
+
+###### `PosixMmapReadableFile`
+
+LevelDB 中使用 `mmap` 共享内存来提高性能。
+
+1. `mmap()` 函数可以把一个文件或者 `Posix` 共享内存对象映射到调用进程的地址空间。映射分为两种：
+
+   1. 文件映射：文件映射将一个文件的一部分直接映射到调用进程的虚拟内存中。一旦一个文件被映射之后就可以通过在相应的内存区域中操作字节来访问文件内容了。映射的分页会在需要的时候从文件中（自动）加载。这种映射也被称为基于文件的映射或内存映射文件。
+
+      <img src="../img/7687105b-152f-4dec-a7ff-36bfa976b7c4.png" style="zoom:50%;" />
+
+   2. 匿名映射：一个匿名映射没有对应的文件。相反，这种映射的分页会被初始化为 0。
+
+2. `mmap()` 系统调用在调用进程的虚拟地址空间中创建一个新映射。
+
+<img src="../img/156036ef-0e40-4e67-9fb3-7873d8527fc1.png" alt="img" style="zoom:50%;" />
+
+参数解析：
+
+`addrs`：映射内存的启示地址，可以指定，也可以设置为 `NULL`，设置为 `NULL` 时，内核会自己寻找一块内存
+
+`len`：表示映射到进程地址空间的字节数，它从被影射文件开头起第 `offset` 个字节处开始算，`offset` 通常设置成 0
+
+`prot`：共享内存的保护参数，具体见下表
+
+|  prot取值  |   功能说明   |
+| :--------: | :----------: |
+| PROT_READ  |     可读     |
+| PROT_WRITE |     可写     |
+| PROT_EXEC  |    可执行    |
+| PROT_NONE  | 数据不可访问 |
+
+`flags`：控制映射操作各个方面的选项的位掩码。这个掩码必须只包含下列值中一个。
+
+|         flags          | 功能说明                                                     |
+| :--------------------: | ------------------------------------------------------------ |
+|       MAP_SHARED       | 变动是共享的                                                 |
+|      MAP_PRIVATE       | 变动是私有的，意思是只在本进程有效，这就意味着会触发 `cow(copy on write)` 机制 |
+|       MAP_FIXED        | 不允许系统选择与指定地址不同的地址。 如果无法使用指定的地址， `mmap()` 将失败。 如果指定了 MAP_FIXED，则 `addr` 必须是页面大小的倍数。 如果 MAP_FIXED 请求成功，则 `mmap()` 建立的映射将替换从 `addr` 到 `addr + len` 范围内进程页面的任何先前映射。不鼓励使用此选项。 |
+|      MAP_NOCACHE       | 此映射中的页面不会保留在内核的内存缓存中。 如果系统内存不足，MAP_NOCACHE 映射中的页面将首先被回收。 该标志用于几乎没有局部性的映射，并为内核提供一个提示，即在不久的将来不太可能再次需要该映射中的页面。 |
+|    MAP_HASSEMAPHORE    | 通知内核该区域可能包含信号量并且可能需要特殊处理。           |
+| MAP_ANONYMOUS/MAP_ANON | 该内存不是从文件映射而来，其内容会被全部初始化为 0，而且 `mmap` 最后的两个参数会被忽略 |
+
+`fd`：对应被打开的文件套接字，一般是通过 `open` 系统调用。`mmap` 返回后，该 `fd` 可以 `close` 掉
+
+`offset`：文件起始位置
+
+3. `munmap()` 系统调用执行与 `mmap()` 相反的操作，即从调用进程的虚拟地址空间中删除映射。
+
+<img src="../img/555bb551-cf68-4752-9bde-edcedb189ab1.png" alt="img" style="zoom:50%;" />
+
+4. `msync`：用于刷盘策略。内核的虚拟内存算法保持内存映射文件与内存映射区的同步，因此内核会在未来某个时刻同步，如果我们需要实时，则需要 `msync` 同步刷。
+
+<img src="../img/c1ce0567-f6bc-45c6-be29-821890862033.png" alt="img" style="zoom:50%;" />
+
+5. 需要特别注意两个信号：SIGBUG 和 SIGSEGV
+   1. SIGBUG：表示我们在内存范围内访问，但是超出了底层对象的大小
+   2.  SIGSEGV：表示我们已经在内存映射范围外访问了。
+
+<img src="../img/6bfe07d3-4db3-4b0f-9d96-26db07167a20.png" alt="img" style="zoom:50%;" />
+
+<img src="../img/d060fc91-49bf-45a5-aa51-916b52bddd99.png" alt="img" style="zoom:50%;" />
+
+##### `SequentialFile`
+
+顺序读取的抽象
+
+- `PosixSequentialFile`
+
+  - 使用 `read()` 在文件中实现顺序读取访问，非线程安全。
+
+  - `fd_`：文件描述符
+
+  - `filename_`：文件名称
+
+- `WindowsSequentialFile`
+
+##### `FileLock`
+
+`FileLock` 的作用是：由于 Linux 和 Windows 对文件的句柄的抽象 ( fd 和 handle ) 不同，使用方式不同，所以用 FileLock 抽象。
+
+其目的是在需要同时使用文件句柄和文件名的时候，可以通过 `FileLock` 对象直接找到
+
+###### `PosixFileLock`
