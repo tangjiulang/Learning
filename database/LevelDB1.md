@@ -1,17 +1,17 @@
-# LevelDB
+# LevelDB基本组件
 
 ![img](../img/kvstore_leveldb_kyotocabinet_small.jpg)
 
-## 基本组件
 
-#### 字节序
+
+## 字节序
 
 - 将低序字节存储在起始地址，称为小端；
 - 将高序字节存储在起始地址，称为大端；
 
 LevelDB 采用小端
 
-#### Slice
+## Slice
 
 查询一个区间的数据
 
@@ -60,7 +60,7 @@ class LEVELDB_EXPORT Slice {
 
 `compare`，判断两个 `slice` 是否相同以及或者谁是谁的前缀
 
-#### Status
+## Status
 
 用于记录 LevelDB 中状态信息，保存错误码和对应的字符串错误信息(不过不支持自定义)。
 
@@ -79,13 +79,13 @@ enum Code {
 };
 ```
 
-#### 编码
+## 编码
 
 LevelDB 中分为定长和变长编码，其中变长编码目的是为了减少空间占用。其基本思想是：每一个 Byte 最高位 bit 用 0/1 表示该整数是否结束，用剩余 7bit 表示实际的数值，在 protobuf 中被广泛使用。
 
 <img src="../img/image-20231228153218126.png" alt="image-20231228153218126" style="zoom: 50%;" />
 
-#### Option
+## Option
 
 ```cpp
 struct LEVELDB_EXPORT Options {
@@ -122,7 +122,7 @@ struct LEVELDB_EXPORT WriteOptions {
 }  // namespace leveldb
 ```
 
-##### Option 通用
+#### Option 通用
 
 1. `Comparator`：被用来表中key比较，默认是字典序
 
@@ -160,17 +160,17 @@ struct LEVELDB_EXPORT WriteOptions {
 
 15. `filter_policy`：block 块中的过滤策略，支持布隆过滤器
 
-##### Read Option
+#### Read Option
 
 1. `verify_checknums`：是否对从磁盘读取的数据进行校验
 2. `fill_cache`：读取到block数据，是否加入到cache中
 3. `snapshot`：记录的是当前的快照
 
-##### Write Option
+#### Write Option
 
 `sync`：是否同步刷盘，也就是调用完 write 之后是否需要显式 fsync
 
-##### Configs
+#### Configs
 
 1. `kNumLevels`：磁盘上最大的 level 个数，默认为 7
 2. `kL0_CompactionTrigger`：第 0 层 SSTable 个数到达这个阈值时触发压缩，默认值为 4
@@ -181,11 +181,11 @@ struct LEVELDB_EXPORT WriteOptions {
 7. `MaxBytesForLevel` 函数：每一层容量大小为上一层的 10 倍
 8. `MaxGrandParentOverlapBytes`：$level - n$ 和 $leveldb-n+2$ 之间重叠的字节数，默认大小为 $10*max\_file\_size$
 
-#### SkipList
+## SkipList
 
 LevelDB 的线段跳表
 
-##### Node
+#### Node
 
 ```cpp
 template <typename Key, class Comparator>
@@ -208,7 +208,7 @@ struct SkipList<Key, Comparator>::Node {
 
 结构体包含了四个方法 `Next、SetNext、NoBarrier_Next、NoBarrier_SetNext`。前两个方法对应加载与读取（内存使用 `barrier` 按需进行），后两个方案对应非屏障方案（可以乱序执行）加载与读取。这四种方案均对 `next_[1]` 进行操作。
 
-##### Iterator
+#### Iterator
 
 `Skiplist` 中的工具类
 
@@ -231,7 +231,7 @@ class Iterator {
 
 有两个成员变量，SkipList 和当前 Node
 
-##### Skiplist
+#### Skiplist
 
 抛开 Iterator 后，和普通的 Skiplist 一样，从 level 高的地方开始找，没找到就跳下一个，下一个如果大于要找的值或者没有下一个，level 就下一层，重复上面的步骤直到找到或者 level == 0 停止
 
@@ -239,9 +239,9 @@ class Iterator {
 
 删除类似插入，找到所有下一层是我们删除的 node 的节点 pre，然后将 pre.next = node.next，然后直到 level == 0，将 node[n] 回收
 
-#### 内存管理
+## 内存管理
 
-##### 成员变量
+#### 成员变量
 
 - `alloc_ptr_`：当前已使用内存的指针
 
@@ -280,13 +280,13 @@ char* Arena::AllocateFallback(size_t bytes) {
 
 左侧资源指当前 `Block` 的 `alloc_bytes_remaining_`
 
-#### 引用计数
+## 引用计数
 
 引用计数是一种内存管理方式。在 LevelDB 中，`memtable/version` 等组件，可能被多个线程共享，因此不能直接删除，需要等到没有线程占用时，才能删除。
 
-#### 各种 key 和 compare
+## 各种 key 和 compare
 
-##### 各种 key
+#### 各种 key
 
 - `user_key`：用户输入的数据 `key`(`slice` 格式)
 
@@ -327,9 +327,9 @@ char* Arena::AllocateFallback(size_t bytes) {
 
 <img src="../img/f919f5bb-7a17-4edb-918b-1d98edd3e01f.png" style="zoom:50%;" />
 
-##### 各种 compare
+#### 各种 compare
 
-###### 成员函数
+##### 成员函数
 
 - `Compare()`：支持三种操作：大于/等于/小于
 
@@ -349,17 +349,17 @@ char* Arena::AllocateFallback(size_t bytes) {
 
 特点：必须要支持线程安全
 
-#### WriteBatch
+## WriteBatch
 
 WriteBatch 使用批量写来提高性能，支持 put 和 delete。
 
-##### 成员变量
+#### 成员变量
 
 - `rep_`：WriteBatch 具体数据
 
 - `WriteBatchInternal`：内部工具性质的辅助类
 
-##### 成员函数
+#### 成员函数
 
 - `Put`：存储 `key` 和 `value` 信息
 
@@ -428,7 +428,7 @@ Status WriteBatch::Iterate(Handler* handler) const {
 }
 ```
 
-#### Env 家族
+## Env 家族
 
 <img src="../img/c7cc89ec-b621-4bd6-9eb9-da89005ef598.png" style="zoom:50%;" />
 
@@ -440,15 +440,15 @@ Status WriteBatch::Iterate(Handler* handler) const {
 
 有三个实现版本
 
-##### `PosixEnv`
+#### `PosixEnv`
 
 封装了 `posix` 标准下所有接口
 
-##### `WindowsEnv`
+#### `WindowsEnv`
 
 封装了 `win` 相关接口
 
-##### `EnvWrapper`
+#### `EnvWrapper`
 
 虽然该类也继承 `Env`，但是他和上述两个作用不一样
 
@@ -460,15 +460,15 @@ Status WriteBatch::Iterate(Handler* handler) const {
 
 了解 `EnvWrapper` 前，我们先了解一下代理设计模式
 
-###### 代理设计模式
+#### 代理设计模式
 
 有些时候，我们想做一些事但是自己没有资源或者自己做不好，就会想着花点钱请专业的人帮我们做。这是一种代理模式。
 
 我是一个用户，我现在需要保洁服务，那么我就需要联系保洁公司，让他们安排相关的专员来帮我完成这件事。
 
-##### `WritableFile & PosixWritableFile`
+#### `WritableFile & PosixWritableFile`
 
-###### `WritableFile`
+##### `WritableFile`
 
 用于顺序写入的文件抽象。 实现必须提供缓冲，因为调用者可能一次将小数据量数据追加到文件中。`WritableFile` 是里面的函数都是纯虚函数。
 
@@ -491,13 +491,13 @@ class WritableFileImpl : public WritableFile {
 
 其中 `FileState` 的 `Ref` 和 `Unref` 都是简单的引用计数操作，`Append` 就是将 `Slice` 插入到文件末尾，并且根据 `BlockSize` 分块
 
-######  `PosixWritableFile`
+#####  `PosixWritableFile`
 
 ```cpp
 class PosixWritableFile final : public WritableFile;
 ```
 
-**成员变量**
+###### 成员变量
 
 * `kWritableFileBufferSize`：作为缓冲区，默认大小为 64k
 * `char buf_[kWritableFileBufferSize]`
@@ -507,7 +507,7 @@ class PosixWritableFile final : public WritableFile;
 * `filename_`：文件名字
 * `dirname_`：文件所在的目录
 
-**成员函数**
+###### 成员函数
 
 ```cpp
 Status Append(const Slice& data) override {
@@ -540,26 +540,26 @@ Status Append(const Slice& data) override {
 }
 ```
 
-##### `RandomAccessFile&PosixRandomAccessFile/PosixMmapReadableFile`
+#### `RandomAccessFile&PosixRandomAccessFile/PosixMmapReadableFile`
 
-###### `Limiter`
+##### `Limiter`
 
 1. `Helper` 类限制资源使用，避免耗尽。目前用于限制只读文件描述符和 `mmap` 文件使用，这样我们就不会用完文件描述符或虚拟内存，或者遇到非常大的数据库的内核性能问题。
 2. 使用 `atomic` 原子变量，所以线程安全
 
-###### `RandomAccessFile`
+##### `RandomAccessFile`
 
 `RandomAccessFile` 用于随机读取文件内容的文件抽象。
 
 线程安全。
 
-###### `PosixRandomAccessFile`
+##### `PosixRandomAccessFile`
 
 ```cpp
 class PosixRandomAccessFile final : public RandomAccessFile;
 ```
 
-**成员变量**
+###### 成员变量
 
 - `has_permanent_fd_`：表示是否每次 `read` 都需要打开文件
 
@@ -569,11 +569,11 @@ class PosixRandomAccessFile final : public RandomAccessFile;
 
 - `filename_`：文件名
 
-**成员函数**
+###### 成员函数
 
 简单的构造函数还有析构函数，以及 `Read` 函数
 
-###### `PosixMmapReadableFile`
+##### `PosixMmapReadableFile`
 
 LevelDB 中使用 `mmap` 共享内存来提高性能。
 
@@ -635,7 +635,7 @@ LevelDB 中使用 `mmap` 共享内存来提高性能。
 
 <img src="../img/d060fc91-49bf-45a5-aa51-916b52bddd99.png" alt="img" style="zoom:50%;" />
 
-##### `SequentialFile`
+#### `SequentialFile`
 
 顺序读取的抽象
 
@@ -649,10 +649,214 @@ LevelDB 中使用 `mmap` 共享内存来提高性能。
 
 - `WindowsSequentialFile`
 
-##### `FileLock`
+#### `FileLock`
 
 `FileLock` 的作用是：由于 Linux 和 Windows 对文件的句柄的抽象 ( fd 和 handle ) 不同，使用方式不同，所以用 FileLock 抽象。
 
 其目的是在需要同时使用文件句柄和文件名的时候，可以通过 `FileLock` 对象直接找到
 
-###### `PosixFileLock`
+##### `PosixFileLock`
+
+使单个进程只能拿到一次锁
+
+##### 文件锁
+
+直接使用flock
+
+## `filename`
+
+#### `FileType`
+
+```cpp
+enum FileType {
+  kLogFile,               // dbname/[0-9]+.log
+  kDBLockFile,            // dbname/[0-9]+.(sst|ldb)
+  kTableFile,             // dbname/LOCK
+  kDescriptorFile,        // dbname/MANIFEST-[0-9]+
+  kCurrentFile,           // dbname/CURRENT 记载当前的manifest文件名
+  kTempFile,              // dbname/[0-9]+.dbtmp 
+    					// 在repair数据库时，会重放wal日志，将这些和已有的sst合并写到临时文件中去，成功之后调用rename原子重命名
+  kInfoLogFile            // dbname/LOG.old 或者 dbname/LOG
+};
+```
+
+- `log`
+
+日志文件 (`*.log`) 存储最近 `update` 的序列。 每次更新都追加到当前日志文件。 当日志文件达到预定大小时（默认约  4MB），转换为 SST（见下文）并为将来的更新创建一个新的日志文件。
+
+当前日志文件的副本保存在内存结构中（`memtable`）。 每次读取时都会查询此副本，以便读取操作反映所有记录的更新。
+
+- `SST`
+
+排序表 (`*.ldb`) 存储按关键字排序的条目序列。 每个条目要么是键的值，要么是键的删除标记。 （保留删除标记以隐藏旧排序表中存在的过时值）。
+
+这组排序表被组织成某一系列文件，分布在不同的 level。 从日志文件生成的排序表被放置在一个特殊的 **`young`** 级别（也称为 `level_0`）。 当年轻文件的数量超过某个阈值（目前为 4 个）时，所有年轻文件与所有重叠的 `level_1` 文件合并在一起，以生成一系列新的  `level_1` 文件（我们创建一个新的  `level_1` 级文件） 每 2MB 数据一个文件。）
+
+`level_0` 中的文件可能包含重叠的键。 然而，其他级别的文件不存在重叠键。当级别 L 中文件的组合大小超过 ( $10^L$ ) MB（即，级别 1 为 10MB，级别 2 为 100MB，...）中的一个文件 `level_L`，将 `level_(L+1)` 中的所有重叠文件合并，形成 `level_(L+1)` 的一组新文件。 这样的整合操作可以把 `young level` 中新更新的数据逐渐往下一个 `level` 中迁移(这样可以使查询的成本降低到最小)。
+
+- `MANIFEST`
+
+`MANIFEST` 文件列出了组成每个级别的一组排序表、相应的键范围和其他重要的元数据。 每当重新打开数据库时，都会创建一个新的 `MANIFEST` 文件（文件名中嵌入了一个新编号）。 `MANIFEST` 文件被格式化为日志，并且对服务状态所做的更改（如文件的添加或删除）追加到此日志中。
+
+-  **`Current`**
+
+`CURRENT` 是一个简单的文本文件，其中包含最新的 `MANIFEST` 文件的名称。
+
+- **`Level 0`**
+
+当日志文件增长到超过一定大小（默认为 4MB）时：
+
+创建一个全新的内存表和日志文件，并在此处指导未来的更新。
+
+在后台：
+
+1. 将之前 `memtable` 的内容写入 `SSTable`。
+2. 丢弃 `memtable`。
+3. 删除旧的日志文件和旧的 `memtable` 。
+4. 将新的 `SSTable` 添加到 `young (level_0)` 级别。
+
+## `Logger`
+
+```cpp
+class LEVELDB_EXPORT Logger {
+ public:
+  Logger() = default;
+  Logger(const Logger&) = delete;
+  Logger& operator=(const Logger&) = delete;
+  virtual ~Logger();
+  // Write an entry to the log file with the specified format.
+  virtual void Logv(const char* format, std::va_list ap) = 0;
+};
+```
+
+同样是一个虚基类，是记录错误信息的抽象
+
+主要还是抽象了 `PosixLogger` 和 `WindowsLogger`
+
+#### `PosixLogger`
+
+```cpp
+class PosixLogger final : public Logger;
+```
+
+## `WAL`
+
+#### 组成
+
+`wal` 日志按照 `block` 为单位进行存储的，每个 `block` 大小为 32k。而每个 `block` 是由一系列 `record` 组成的。
+
+<img src="../img/abc5c03b-91ee-4a16-9a1b-91a2b69db979.png" style="zoom:50%;" />
+
+#### Log
+
+```cpp
+namespace log {
+
+enum RecordType {
+  // Zero is reserved for preallocated files
+  kZeroType = 0,
+  kFullType = 1,
+
+  // For fragments
+  kFirstType = 2,
+  kMiddleType = 3,
+  kLastType = 4
+};
+static const int kMaxRecordType = kLastType;
+static const int kBlockSize = 32768;
+// Header is checksum (4 bytes), length (2 bytes), type (1 byte).
+static const int kHeaderSize = 4 + 2 + 1;
+}  // namespace log
+```
+
+在 `namespace Log` 下，规定了 `RecordType，kMaxRecordType，kBlockSize，kHeaderSize`
+
+#### `Log_Write`
+
+主要函数为写入流程
+
+```cpp
+Status Writer::AddRecord(const Slice& slice) {
+  const char* ptr = slice.data();
+  size_t left = slice.size();
+  Status s;
+  bool begin = true;
+  
+  do {
+  	// 还剩多少空间
+    const int leftover = kBlockSize - block_offset_;
+    assert(leftover >= 0);
+    // 空间不足以放下 header
+    if (leftover < kHeaderSize) {
+      // 将剩下的位置补齐，并且新开一个
+      if (leftover > 0) {
+      	// 剩余位置一定小于 7
+        static_assert(kHeaderSize == 7, "");
+        dest_->Append(Slice("\x00\x00\x00\x00\x00\x00", leftover));
+      }
+      block_offset_ = 0;
+    }
+	// 能放下 header
+    assert(kBlockSize - block_offset_ - kHeaderSize >= 0);
+	// 计算剩余容量
+    const size_t avail = kBlockSize - block_offset_ - kHeaderSize;
+    const size_t fragment_length = (left < avail) ? left : avail;
+
+    RecordType type;
+    // 是否是最后一个 block
+    const bool end = (left == fragment_length);
+    // 分情况，是否是第一个block，是否是最后一个block，其他情况
+    if (begin && end) {
+      type = kFullType;
+    } else if (begin) {
+      type = kFirstType;
+    } else if (end) {
+      type = kLastType;
+    } else {
+      type = kMiddleType;
+    }
+	// 写入
+    s = EmitPhysicalRecord(type, ptr, fragment_length);
+    ptr += fragment_length;
+    left -= fragment_length;
+    begin = false;
+  } while (s.ok() && left > 0);
+  return s;
+}
+// 序列化 header 并将 log 写入 WritableFile 中
+Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
+                                  size_t length) {
+  assert(length <= 0xffff);  // Must fit in two bytes
+  assert(block_offset_ + kHeaderSize + length <= kBlockSize);
+
+  // Format the header
+  char buf[kHeaderSize];
+  buf[4] = static_cast<char>(length & 0xff);
+  buf[5] = static_cast<char>(length >> 8);
+  buf[6] = static_cast<char>(t);
+
+  // Compute the crc of the record type and the payload.
+  uint32_t crc = crc32c::Extend(type_crc_[t], ptr, length);
+  crc = crc32c::Mask(crc);  // Adjust for storage
+  EncodeFixed32(buf, crc);
+
+  // Write the header and the payload
+  Status s = dest_->Append(Slice(buf, kHeaderSize));
+  if (s.ok()) {
+    s = dest_->Append(Slice(ptr, length));
+    if (s.ok()) {
+      s = dest_->Flush();
+    }
+  }
+  block_offset_ += kHeaderSize + length;
+  return s;
+}
+```
+
+#### WAL日志什么时候被删除呢？
+
+其实在 LevelDB的 doc 文档里面有讲解**(具体在 doc/impl.md )**，不过这里我们还是得具体来说一下。
+
+在打开数据库以及 compact 之后，会将不再使用的文件删除，使用的函数是 RemoveObsoleteFiles
+
+我们可以在打开 LevelDB 的日志系统，并且适当的在源码中添加日志，此外也可以结合 gdb 来查看栈调用情况。
