@@ -860,3 +860,25 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
 在打开数据库以及 compact 之后，会将不再使用的文件删除，使用的函数是 RemoveObsoleteFiles
 
 我们可以在打开 LevelDB 的日志系统，并且适当的在源码中添加日志，此外也可以结合 gdb 来查看栈调用情况。
+
+## `HashTable`
+
+#### 成员变量
+
+- `length_`：哈希表的总长度
+
+- `elems_`：当前哈希表的实际元素个数
+
+- `list_`：实际存储的数据，底层结构
+
+#### 成员函数
+
+- Lookup：查找某个key
+
+- Insert
+
+- Remove
+
+- FindPointer：用来定位元素所在的节点
+
+- Resize：链表的扩容
