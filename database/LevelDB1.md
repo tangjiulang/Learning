@@ -137,13 +137,12 @@ struct LEVELDB_EXPORT WriteOptions {
 6. `info_log`：db 日志句柄
 
 7. `write_buffer_size`：memtable 的大小(默认 4mb)
-
    - 值大有利于性能提升
-
+   
    - 但是内存可能会存在两份，太大需要注意oom
-
+   
    - 过大刷盘之后，不利于数据恢复
-
+   
 8. `max_open_files`：允许打开的最大文件数
 
 9. `block_cache`：block 的缓存
@@ -233,11 +232,11 @@ class Iterator {
 
 #### Skiplist
 
-抛开 Iterator 后，和普通的 Skiplist 一样，从 level 高的地方开始找，没找到就跳下一个，下一个如果大于要找的值或者没有下一个，level 就下一层，重复上面的步骤直到找到或者 level == 0 停止
+抛开 Iterator 后，和普通的 Skiplist 一样，从 level 高的地方开始找，没找到就跳下一个，下一个如果大于要找的值或者没有下一个，`level` 就下一层，重复上面的步骤直到找到或者 `level == 0` 停止
 
-插入的时候会随机一个 height 值，这个值代表 node 的高度，和查询相似，但是每次在 level 要减一的时候，我们会将当前 node 保存起来，在找到最后一个的时候，再从下往上一层一层的添加到 node 的后面。
+插入的时候会随机一个 `height` 值，这个值代表 `node` 的高度，和查询相似，但是每次在 `level` 要减一的时候，我们会将当前 `node` 保存起来，在找到最后一个的时候，再从下往上一层一层的添加到 `node` 的后面。
 
-删除类似插入，找到所有下一层是我们删除的 node 的节点 pre，然后将 pre.next = node.next，然后直到 level == 0，将 node[n] 回收
+删除类似插入，找到所有下一层是我们删除的 `node` 的节点 `pre`，然后将 `pre.next = node.next`，然后直到 `level == 0`，将 `node[n]` 回收
 
 ## 内存管理
 
@@ -861,7 +860,7 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
 
 我们可以在打开 LevelDB 的日志系统，并且适当的在源码中添加日志，此外也可以结合 gdb 来查看栈调用情况。
 
-## `HashTable`
+## `HandleTable`
 
 #### 成员变量
 
@@ -873,12 +872,206 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
 
 #### 成员函数
 
-- Lookup：查找某个key
+- `Lookup`：查找某个 `key`
+- `Insert`
+- `Remove`
+- `FindPointer`：用来定位元素所在的节点
+- `Resize`：链表的扩容
 
-- Insert
+本质上 `HandleTable` 就是一个链式 `HashTable`
 
-- Remove
+<img src="../img/20240107150205.jpg" style="zoom: 33%;" />
 
-- FindPointer：用来定位元素所在的节点
+需要注意的几个点
 
-- Resize：链表的扩容
+* `hash` 是 `key Hash()` 后得到的，这个值可能没有落在 `0 ~ length_ - 1` 上，所以需要 `hash & (length - 1)`
+
+* `list_` 其实就是指向这个 `HandleTable` 第一个元素，之后的 `LRUHandle**` 也都是指向数组中的某个元素
+
+* `next_hash` 其实就是拉链法，也就是上图中竖着的部分
+
+* `Resize` 只有在 `length_` 超过 4 的时候才二倍增长
+* `Resize` 的时候和 `std::vector` 扩容的方式一样，先申请一个 `2 * length_` 大小的容器，然后将当前容器中的元素以某种方式放入新的容器中，最后销毁此容器
+
+## `LRUHandle`
+
+#### 成员变量
+
+- `void* value`：具体的值，指针类型
+
+- `void (*deleter)(const Slice&, void* value)`：自定义回收节点的回调函数
+
+- `LRUHandle* next_hash`：用于 `hashtable` 冲突时，下一个节点
+
+- `LRUHandle* next`：代表 LRU 中双向链表中下一个节点
+
+- `LRUHandle* prev`：代表 LRU 中双向链表中上一个节点
+
+- `size_t charge`：记录当前 `value` 所占用的内存大小，用于后面超出容量后需要进行 `lru`
+
+- `size_t key_length`：数据 `key` 的长度
+
+- `bool in_cache`：表示是否在缓存中
+
+- `uint32_t refs`：引用计数，因为当前节点可能会被多个组件使用，不能简单的删除
+
+- `uint32_t hash`：记录当前 `key` 的 `hash` 值
+
+需要格外注意：该节点很巧妙，既可以用做 `hashtable`，又可以用于 `lru` 缓存节点
+
+#### 成员函数
+
+```cpp
+LRUHandle** FindPointer(const Slice& key, uint32_t hash) {
+    LRUHandle** ptr = &list_[hash & (length_ - 1)];
+    while (*ptr != nullptr && ((*ptr)->hash != hash || key != (*ptr)->key())) {
+        ptr = &(*ptr)->next_hash;
+    }
+    return ptr;
+}
+
+LRUHandle* Insert(LRUHandle* h) {
+    LRUHandle** ptr = FindPointer(h->key(), h->hash);
+    LRUHandle* old = *ptr;
+    h->next_hash = (old == nullptr ? nullptr : old->next_hash);
+    *ptr = h;
+    if (old == nullptr) {
+        ++elems_;
+        if (elems_ > length_) {
+            // Since each cache entry is fairly large, we aim for a small
+            // average linked list length (<= 1).
+            Resize();
+        }
+    }
+    return old;
+}
+// 如果找到就将原值旧值删除
+```
+
+
+
+## `Cache`
+
+虚基类
+
+根据不同的 Handle 有不同的 Cache，class Cache 就是所有 Cache 的抽象
+
+## `LRUCache`
+
+#### 成员变量
+
+- `capacity_`：LRU 容量，可以不固定：字节数或者条数均可
+
+- `mutable port::Mutex mutex_`：保护 `LRUCache` 操作
+
+- `size_t usage_ GUARDED_BY(mutex_)`：获取当前 `LRUCache` 已经使用的内存
+
+- `LRUHandle lru_ GUARDED_BY(mutex_)`：
+
+  - 只存在缓存中的节点 `refs==1` and `in_cache==true`
+
+  - `lru.prev is newest entry, lru.next is oldest entry`
+
+- `LRUHandle in_use_ GUARDED_BY(mutex_)`：既存在缓存中 `in_cache==true`，又被外部引用的节点 `refs >= 2`
+
+- `HandleTable table_ GUARDED_BY(mutex_)`：用于快速获取某个节点
+
+#### 成员函数
+
+```cpp
+Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
+                                size_t charge,
+                                void (*deleter)(const Slice& key,
+                                                void* value)) {
+  MutexLock l(&mutex_);
+// 创建一个节点对象
+  LRUHandle* e =
+      reinterpret_cast<LRUHandle*>(malloc(sizeof(LRUHandle) - 1 + key.size()));
+  e->value = value;
+  e->deleter = deleter;
+  e->charge = charge;
+  e->key_length = key.size();
+  e->hash = hash;
+  e->in_cache = false;
+// 这里为1，主要是是因为该节点会返回给调用者，表示被引用
+  e->refs = 1;  // for the returned handle.
+  std::memcpy(e->key_data, key.data(), key.size());
+// 初始化完成
+// 如果 cache 中还有空位
+  if (capacity_ > 0) {
+// 在 cache 中
+    e->refs++;  // for the cache's reference.
+    e->in_cache = true;
+    LRU_Append(&in_use_, e);
+    usage_ += charge;
+// 删除 cache 中原有节点，如果有的话
+    FinishErase(table_.Insert(e));
+  } else {
+    e->next = nullptr;
+  }
+// 当cache容量不够，而且有空余的节点时候需要进行lru策略进行淘汰
+// 这里需要注意的是对于那些in_use中的节点是不能被淘汰的，因为他们可能会外界使用
+  while (usage_ > capacity_ && lru_.next != &lru_) {
+    LRUHandle* old = lru_.next;
+    assert(old->refs == 1);
+    bool erased = FinishErase(table_.Remove(old->key(), old->hash));
+    if (!erased) {  // to avoid unused variable when compiled NDEBUG
+      assert(erased);
+    }
+  }
+
+  return reinterpret_cast<Cache::Handle*>(e);
+}
+
+void LRUCache::Ref(LRUHandle* e) {
+  if (e->refs == 1 && e->in_cache) {
+    LRU_Remove(e);
+    LRU_Append(&in_use_, e);
+  }
+  e->refs++;
+}
+
+void LRUCache::Unref(LRUHandle* e) {
+  assert(e->refs > 0);
+// 先将引用减去1
+  e->refs--;
+  if (e->refs == 0) { 
+    assert(!e->in_cache);
+    (*e->deleter)(e->key(), e->value);
+    free(e);
+    
+  } else if (e->in_cache && e->refs == 1) {
+// 表示仅仅只在 cache 中，此时需要将其从 in_use_ 中删除，然后放到 lru_ 中
+    LRU_Remove(e);
+    LRU_Append(&lru_, e);
+  }
+}
+```
+
+#### 根据上面的分析我们可以看出 `table_`，`lru_`，`in_use_` 之间的关系是
+
+<img src="../img/189133099-0140c4df-884a-4591-870d-a5e92be39df5.png" style="zoom:50%;" />
+
+这里先预告一下 ShardedLRUCache 和 其他之间的关系
+
+## `SharededLRUCache`
+
+#### 成员变量
+
+- `LRUCache shard_[kNumShards]`：
+
+- `port::Mutex id_mutex_`
+
+- `uint64_t last_id_`
+
+- `static const int kNumShardBits = 4`
+
+- `static const int kNumShards = 1 << kNumShardBits`
+
+#### 成员函数
+
+主要就是根据 Shared 找到对应分片的 LRUCache，然后利用 LRUCache 里面的函数进行操作。
+
+#### 作用
+
+引入 `SharedLRUCache` 的目的在于减小加锁的粒度，提高读写并行度。策略比较简洁—— 利用 key 哈希值的前 `kNumShardBits = 4` 个 bit 作为分片路由，可以支持 `kNumShards = 1 << kNumShardBits` 16 个分片。
