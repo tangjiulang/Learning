@@ -622,6 +622,8 @@ TableAndFile 是一个拥有2个变量的结构体：`RandomAccessFile*` 和 `Ta
 
 - `Evict`：该函数用以清除指定文件所有 cache 的 entry，函数实现很简单，就是根据 file number 清除 cache 对象
 
+## Block  中的缓存
+
 ### Block  Cache
 
 ![](./../img/20200704121853102.png)
@@ -630,4 +632,144 @@ TableAndFile 是一个拥有2个变量的结构体：`RandomAccessFile*` 和 `Ta
 - **Value：** 就是真实的 Block Data 数据。
 
 因为打开的 ldb（就是sst）文件中的 Block Data 都是存放于全局一份的 Block Cache 中的，而不同的 ldb 文件其 Block Data 的 offset 可能相同，为了区分不同 ldb 文件中的 Block Data 的 offset，所以要给每个 ldb 文件分配一个唯一的 cache_id，这样 `key = cache_id + block_offset` 的组合就是唯一的了。
+
+#### 读取流程
+
+```cpp
+//根据index_value(即offset+size)，读取对应的block
+Iterator* Table::BlockReader(void* arg, const ReadOptions& options,
+                             const Slice& index_value) {
+  Table* table = reinterpret_cast<Table*>(arg);
+  Cache* block_cache = table->rep_->options.block_cache;
+  Block* block = nullptr;
+  Cache::Handle* cache_handle = nullptr;
+
+  BlockHandle handle;
+  Slice input = index_value;
+  Status s = handle.DecodeFrom(&input);
+  // We intentionally allow extra stuff in index_value so that we
+  // can add more features in the future.
+
+  if (s.ok()) {
+    BlockContents contents;
+    if (block_cache != nullptr) {
+    // 如果开启了block_cache，则先去此cache中查找
+	  // key就是 id + Data Block 的 offset
+      char cache_key_buffer[16];
+      EncodeFixed64(cache_key_buffer, table->rep_->cache_id);
+      EncodeFixed64(cache_key_buffer + 8, handle.offset());
+      Slice key(cache_key_buffer, sizeof(cache_key_buffer));
+      cache_handle = block_cache->Lookup(key);
+
+	  // 在cache中查找到了直接将地址赋值给block;
+      if (cache_handle != nullptr) {
+        block = reinterpret_cast<Block*>(block_cache->Value(cache_handle));
+      } else {
+      // 未找到，则去 SSTable 文件中去查找
+        s = ReadBlock(table->rep_->file, options, handle, &contents);
+        if (s.ok()) {
+          block = new Block(contents);
+		  // 若读取的 Block 是直接 new 的，且 fill_cache，则将这个 Block 缓存起来。
+          if (contents.cachable && options.fill_cache) {
+            cache_handle = block_cache->Insert(key, block, block->size(),
+                                               &DeleteCachedBlock);
+          }
+        }
+      }
+    } else {
+     
+      // 未使用 block_cache，则直接去 SSTable 中去读数据。
+      s = ReadBlock(table->rep_->file, options, handle, &contents);
+      if (s.ok()) {
+        block = new Block(contents);
+      }
+    }
+  }
+
+  Iterator* iter;
+  if (block != nullptr) {
+    iter = block->NewIterator(table->rep_->options.comparator);
+	// cache_handle 为 null，表示 block 不在缓存中，在迭代器 iter 析构时，直接删除这个 block。
+	// cache_handle 非 null，表示 block 在缓存中，在迭代器 iter 析构时，通过 ReleaseBlock，减少其一次引用计数。
+    if (cache_handle == nullptr) {
+      iter->RegisterCleanup(&DeleteBlock, block, nullptr);
+    } else {
+      iter->RegisterCleanup(&ReleaseBlock, block_cache, cache_handle);
+    }
+  } else {
+    // 若未获取到 block，则直接生存一个错误迭代器返回。
+    iter = NewErrorIterator(s);
+  }
+  return iter;
+}
+```
+
+## Table
+
+### 类图
+
+#### 成员变量
+
+- `Rep* const rep_`
+
+  - `Options options`：Table 相关的参数信息
+
+  - `Status status`：Table 相关的状态信息
+
+  - `RandomAccessFile* file`：Table 所持有的文件
+
+  - `uint64_t cache_id`：Table 本身对应的缓存 id
+
+  - `FilterBlockReader* filter`：filter block 块的读取
+
+  - `const char* filter_data`：保存对应的 filter 数据
+
+  - `BlockHandle metaindex_handle`：解析保存 metaindex_handler
+
+  - `Block* index_block`：index block 数据
+
+#### 成员函数
+
+- `Open`
+
+  - 1.静态函数，而且唯一是公有的接口
+
+  - 2.主要负责解析出基本数据，如 Footer，然后解析出 meta index block + index block + filter block + data block。
+
+  - 3.BlockContents 对象到 Block 的转换，其中主要是计算出 restart_offset_，而且 Block 是可以被遍历的
+
+- `InternalGet`：查找指定的 key，内部先 bf 判断，然后缓存获取，最后在读取文件
+
+- `ReadMeta`：读取元数据，主要是 Footer，然后是 meta index handle，filter handle
+
+- `ReadFilter`：主要是根据 filter handler 还原 filter block 数据
+
+- `NewIterator`：返回 index block 的迭代器，目的是为了确定当前 key 位于哪个 data block 中
+
+#### Block Contents
+
+BlockContents 类主要是用在 ReadBlock 函数中，即保存 block 解析出来的临时数据
+
+### Block
+
+<img src="./../img/cc5e19ef-e404-4361-ba24-cd8b93dde69c.png" style="zoom:50%;" />
+
+1.  Block 作用：
+
+- 保存 BlockContents 转换后的数据，存储至 cache 中
+- 由于 SST 中存储的 block 都存在多个 item(类似一个vector)，因此需要一个迭代器来遍历
+
+2. 核心函数讲解
+
+​	block 中的核心函数主要是通过给定的 contents 解析出 `data_`，`restart_offset_` 的位置。
+
+​	Iter 对于 Block 来说就是一个辅助类，它主要是根据解析出来的 block，然后指向 `restart_offset_`，根据 restart 快速找到某个 key，这里的 seek 主要是运用二分进行快速查找，因为 	block 中的 key 一定是一个单调递增
+
+### 读取流程
+
+![](./../img/37f0a719-efbd-41ac-a952-096dcf28ffed.svg)
+
+1. 构建SST文件名
+2. 这里我们一第0层为例，开始遍历immentable数据dump到磁盘上
+3. 更新SST元数据，并刷盘
 
