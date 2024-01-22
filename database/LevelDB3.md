@@ -125,6 +125,10 @@ CompactMemTable 和 BackgroundCompaction 过程中会导致新文件的产生和
 
 也就是说 Version 是在 Compact 的过程中诞生的，Version 的作用就是实现 SST 的 MVCC，从而做到快照读的作用。
 
+同时，在 Immutable 转化为 SSTable 的时候，也会产生 Version。
+
+总的来说，只要 SSTable 发生变动，都会产生 Version。
+
 ## State 类
 
 ```cpp
@@ -150,3 +154,82 @@ state.matches = 0;
 ForEachOverlapping(ikey.user_key, internal_key, &state, &State::Match);
 ```
 
+LevelDB 是基于 lsm 树的思想来实现，因此涉及到压缩，而在 LevelDB 中其压缩有两种模式：minor compaction 和 major compaction，而 major compaction 中触发又包括 size 和 seek。因此 State 类记录了 SST 文件记录的次数，是否满足触发 compaction 的条件。
+
+不同的 State 有不同的 Match 函数，所以在传入的时候需要将回调函数写入函数中
+
+## FileMetaData
+
+**SST 文件元信息结构**
+
+* `int refs`：当前文件被引用了多少次，SSTable 可以在不同的 Version 中。
+
+* `int allowed_seeks`：文件允许被 Seek 的次数，超过这个次数，就好把整个文件 Compact 掉。
+
+* `uint64_t number`：这个 number 用来唯一标识一个 SSTable
+*  `uint64_t file_size`：文件大小
+*  `InternalKey smallest`：最小 key
+*  `InternalKey largest`：最大 key
+
+## VersionEdit
+
+compact 会有一些改变 Version 的操作，为了减少 Version 切换的时间点，将这些操作封装成 VersionEdit，等 compact 彻底完成后，将 VersionEdit 和当前 Version 进行合并，得到的最新状态的 Version
+
+### 数据结构
+
+* `typedef std::set<std::pair<int, uint64_t>> DeletedFileSet`：比较器名称
+
+* `std::string comparator_`：日志编号,该日志之前的数据均可删除
+
+* `uint64_t log_number_`：已经弃用
+
+* `uint64_t prev_log_number_`：下一个文件编号(ldb、idb、MAINFEST文件共享一个序号空间)
+
+* `uint64_t next_file_number_`：最后的seq_num
+
+* `SequenceNumber last_sequence_`
+
+* `bool has_comparator_;`
+*  `bool has_log_number_;`
+* `bool has_prev_log_number_;`
+* `bool has_next_file_number_;`
+
+* `bool has_last_sequence_`：记录每一层所对应需要压缩的
+
+* `std::vector<std::pair<int, InternalKey>> compact_pointers_`：相比上次version而言，本次需要删除的文件有哪些
+
+* `DeletedFileSet deleted_files_`：相比上次version而言，本次新增的文件有哪些
+
+* `std::vector<std::pair<int, FileMetaData>> new_files_;`
+
+## VersionSet
+
+![image-20240123014114711](./../img/image-20240123014114711.png)
+
+本质上 VersionSet 就是一个双向循环链表，其中， dummy Version 是整个双向链表的头，不包含任何数据。
+
+当一个 Version 不再被任何引用的时候，会自动删除掉
+
+同时维护了每一个 Level 层下一次 Compact 要选取的 Start_key，全局的文件编号分配，当前的 manifest_file_number，当前 manifest 文件句柄及文件操作封装。
+
+VersionSet 在构造的时候会默认 appendVersion 一次，这个新加入到循环链表中的 Version 也没有存任何数据，可能只是用来初始化 Current_ 变量的。
+
+## Manifest
+
+为了重启 LevelDB 后可以恢复到退出前的状态，需要将 DB 中的状态保存下来，这些信息就保存在 Manifest 中。当 LevelDB 出现异常时，为了能尽可能多的恢复，Manifest 中不仅保存当前的状态，也会将历史的状态也保存起来，考虑到每次状态的完全保存需要空间和耗费的时间比较多，当前采用的方式是，只在Manifest开始保存完整的状态信息（通过VersionSet::WriteSnapShot() 来实现），接下来只保存每次 compact 产生的 VersionEdit。
+
+![](./../img/20200829122129644.png)
+
+### Version 产生流程
+
+* Memtable 转为新的 SSTable 或者进 行Compact 之后 SSTable 产生变化时调用 `VersionSet::LogAndApply() `产生新的 Version。
+
+  ![image-20240123023905221](./../img/image-20240123023905221.png)
+
+* LevelDB 上电还原 Version 过程，调用接口 `VersionSet::Recover()`。
+
+  ![](./../img/111.png)
+
+* LevelDB 异常损坏，修复 LevelDB 过程，调用接口 `RepairDB()` 产生新的 Version。
+
+![image-20240123031044927](./../img/image-20240123031044927.png)
