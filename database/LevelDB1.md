@@ -299,7 +299,7 @@ char* Arena::AllocateFallback(size_t bytes) {
 
   -   `ValueType type`
 
-- InternalKey：
+- `InternalKey`：
 
   - 内部 `key`，常用来比如 `key` 比较等场景
 
