@@ -352,6 +352,8 @@ char* Arena::AllocateFallback(size_t bytes) {
 
 WriteBatch 使用批量写来提高性能，支持 put 和 delete。
 
+![](../img/image.png)
+
 #### 成员变量
 
 - `rep_`：WriteBatch 具体数据
@@ -367,14 +369,11 @@ WriteBatch 使用批量写来提高性能，支持 put 和 delete。
 - `Append`：多个 WriteBatch 还可以继续合并
 
 - `Iterate`：
-
   - 遍历该 `batch` 结构，为了方便扩展，参数使用的是 `Handler` 基类，对应的是抽象工厂模式
-
+  
   - `MemTableInserter` 子类：对 `memtable` 的操作
-
+  
 - `ApproximateSize`：内存状态信息
-
-![](../img/image.png)
 
 这里运用了两个技巧 `b->rep_.data()+8` 和 `&b->rep_[8]`
 

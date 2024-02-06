@@ -415,7 +415,7 @@ Status Version::Get(const ReadOptions& options, const LookupKey& k,
 
 ![image-20240124005049474](./../img/image-20240124005049474.png)
 
-#### ？？？？？？？？RecordReadSample
+#### RecordReadSample
 
 我们知道，major compaction 机制之一就是要看 seek 次数的查找阈值
 
