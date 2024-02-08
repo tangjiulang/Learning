@@ -4,9 +4,10 @@
 
 
 
-## 字节序
+##### 字节序
 
 - 将低序字节存储在起始地址，称为小端；
+
 - 将高序字节存储在起始地址，称为大端；
 
 LevelDB 采用小端
@@ -18,35 +19,65 @@ LevelDB 采用小端
 主要操作为拷贝构造函数
 
 ```cpp
+1
 class LEVELDB_EXPORT Slice {
+2
  public:
-  Slice() : data_(""), size_(0) {}
-  Slice(const char* d, size_t n) : data_(d), size_(n) {}
-  Slice(const std::string& s) : data_(s.data()), size_(s.size()) {}
-  Slice(const char* s) : data_(s), size_(strlen(s)) {}
-  Slice(const Slice&) = default;
-  Slice& operator=(const Slice&) = default;
-  const char* data() const { return data_; }
-  size_t size() const { return size_; }
-  bool empty() const { return size_ == 0; }
-
-  // Return the ith byte in the referenced data.
-  // REQUIRES: n < size()
-  char operator[](size_t n) const;
-
-  // Drop the first "n" bytes from this slice.
-  void remove_prefix(size_t n);
-
-  int compare(const Slice& b) const;
-
-  // Return true iff "x" is a prefix of "*this"
-  bool starts_with(const Slice& x) const {
-    return ((size_ >= x.size_) && (memcmp(data_, x.data_, x.size_) == 0));
+3
+  Slice() : data_(""), size_(0) {}
+4
+  Slice(const char* d, size_t n) : data_(d), size_(n) {}
+5
+  Slice(const std::string& s) : data_(s.data()), size_(s.size()) {}
+6
+  Slice(const char* s) : data_(s), size_(strlen(s)) {}
+7
+  Slice(const Slice&) = default;
+8
+  Slice& operator=(const Slice&) = default;
+9
+  const char* data() const { return data_; }
+10
+  size_t size() const { return size_; }
+11
+  bool empty() const { return size_ == 0; }
+12
+​
+13
+  // Return the ith byte in the referenced data.
+14
+  // REQUIRES: n < size()
+15
+  char operator[](size_t n) const;
+16
+​
+17
+  // Drop the first "n" bytes from this slice.
+18
+  void remove_prefix(size_t n);
+19
+​
+20
+  int compare(const Slice& b) const;
+21
+​
+22
+  // Return true iff "x" is a prefix of "*this"
+23
+  bool starts_with(const Slice& x) const {
+24
+    return ((size_ >= x.size_) && (memcmp(data_, x.data_, x.size_) == 0));
+25
   }
-
+26
+​
+27
  private:
-  const char* data_;
-  size_t size_;
+28
+  const char* data_;
+29
+  size_t size_;
+30
 };
 ```
 
@@ -69,71 +100,98 @@ class LEVELDB_EXPORT Slice {
 ##### code
 
 ```cpp
+1
 enum Code {
-    kOk = 0,
-    kNotFound = 1,
-    kCorruption = 2,
-    kNotSupported = 3,
-    kInvalidArgument = 4,
-    kIOError = 5
+2
+    kOk = 0,
+3
+    kNotFound = 1,
+4
+    kCorruption = 2,
+5
+    kNotSupported = 3,
+6
+    kInvalidArgument = 4,
+7
+    kIOError = 5
+8
 };
 ```
 
-## 编码
+##### 编码
 
 LevelDB 中分为定长和变长编码，其中变长编码目的是为了减少空间占用。其基本思想是：每一个 Byte 最高位 bit 用 0/1 表示该整数是否结束，用剩余 7bit 表示实际的数值，在 protobuf 中被广泛使用。
 
-对于32位（`Varint32`）整形数经变长编码后占用1~5个Byte，小的数字用1个字节，大的数字用5个字节。
-
-对于64为（`Varint64`）整形数经变长编码后占用1~10个Byte，小的数字用1个字节，大的数字用10个字节。
-
-##### 最高有效状态位msb：
-
-- 为 1 则表明后面的字节还是属于当前数据的;
-- 为 0 则表是当前字节是最后一个字节数据。
-
-![image-20240208155821905](./../img/image-20240208155821905.png)
-
 <img src="../img/image-20231228153218126.png" alt="image-20231228153218126" style="zoom: 50%;" />
-
-
 
 ## Option
 
-```cpp
+##### cpp
+1
 struct LEVELDB_EXPORT Options {
-  Options();
-  const Comparator* comparator;
-  bool create_if_missing = false;
-  bool error_if_exists = false;
-  bool paranoid_checks = false;
-  Env* env;
-  Logger* info_log = nullptr;
-  size_t write_buffer_size = 4 * 1024 * 1024;
-  int max_open_files = 1000;
-  Cache* block_cache = nullptr;
-  size_t block_size = 4 * 1024;
-  int block_restart_interval = 16;
-  size_t max_file_size = 2 * 1024 * 1024;
-  CompressionType compression = kSnappyCompression;
-  int zstd_compression_level = 1;
-  bool reuse_logs = false;
-  const FilterPolicy* filter_policy = nullptr;
+2
+  Options();
+3
+  const Comparator* comparator;
+4
+  bool create_if_missing = false;
+5
+  bool error_if_exists = false;
+6
+  bool paranoid_checks = false;
+7
+  Env* env;
+8
+  Logger* info_log = nullptr;
+9
+  size_t write_buffer_size = 4 * 1024 * 1024;
+10
+  int max_open_files = 1000;
+11
+  Cache* block_cache = nullptr;
+12
+  size_t block_size = 4 * 1024;
+13
+  int block_restart_interval = 16;
+14
+  size_t max_file_size = 2 * 1024 * 1024;
+15
+  CompressionType compression = kSnappyCompression;
+16
+  int zstd_compression_level = 1;
+17
+  bool reuse_logs = false;
+18
+  const FilterPolicy* filter_policy = nullptr;
+19
 };
-
+20
+​
+21
 struct LEVELDB_EXPORT ReadOptions {
-  bool verify_checksums = false;
-  bool fill_cache = true;
-  const Snapshot* snapshot = nullptr;
+22
+  bool verify_checksums = false;
+23
+  bool fill_cache = true;
+24
+  const Snapshot* snapshot = nullptr;
+25
 };
-
+26
+​
+27
 struct LEVELDB_EXPORT WriteOptions {
-  WriteOptions() = default;
-  bool sync = false;
+28
+  WriteOptions() = default;
+29
+  bool sync = false;
+30
 };
-
-}  // namespace leveldb
-```
+31
+​
+32
+}  // namespace leveldb
+#####
 
 #### Option 通用
 
@@ -150,26 +208,19 @@ struct LEVELDB_EXPORT WriteOptions {
 6. `info_log`：db 日志句柄
 
 7. `write_buffer_size`：memtable 的大小(默认 4mb)
+
    - 值大有利于性能提升
-   
+
    - 但是内存可能会存在两份，太大需要注意oom
-   
    - 过大刷盘之后，不利于数据恢复
-   
+
 8. `max_open_files`：允许打开的最大文件数
-
 9. `block_cache`：block 的缓存
-
 10. `block_size`：每个 block 的数据包大小(未压缩)，默认是 4k
-
 11. `block_restart_interval`：block 中记录完整 key 的间隔
-
 12. `max_file_size`：生成新文件的阈值(对于性能较好的文件系统可以调大该阈值，但会增加数据恢复的时间)，默认 2k
-
 13. `compression`：数据压缩类型，默认是 kSnappyCompression，压缩速度快
-
 14. `reuse_logs`：是否复用之前的 MANIFES 和 log files
-
 15. `filter_policy`：block 块中的过滤策略，支持布隆过滤器
 
 #### Read Option
@@ -200,17 +251,29 @@ LevelDB 的线段跳表
 #### Node
 
 ```cpp
+1
 template <typename Key, class Comparator>
+2
 struct SkipList<Key, Comparator>::Node {
-  explicit Node(const Key& k) : key(k) {}
-  Key const key;
-  Node* Next(int n);
-  void SetNext(int n, Node* x);
-
-  Node* NoBarrier_Next(int n);
-  void NoBarrier_SetNext(int n, Node* x);
+3
+  explicit Node(const Key& k) : key(k) {}
+4
+  Key const key;
+5
+  Node* Next(int n);
+6
+  void SetNext(int n, Node* x);
+7
+​
+8
+  Node* NoBarrier_Next(int n);
+9
+  void NoBarrier_SetNext(int n, Node* x);
+10
  private:
-  std::atomic<Node*> next_[1];
+11
+  std::atomic<Node*> next_[1];
+12
 };
 ```
 
@@ -225,19 +288,33 @@ struct SkipList<Key, Comparator>::Node {
 `Skiplist` 中的工具类
 
 ```cpp
+1
 class Iterator {
-   public:
-    explicit Iterator(const SkipList* list);
-    bool Valid() const;
-    const Key& key() const;
-    void Next();
-    void Prev();
-    void Seek(const Key& target);
-    void SeekToFirst();
-    void SeekToLast();
-   private:
-    const SkipList* list_;
-    Node* node_;
+2
+   public:
+3
+    explicit Iterator(const SkipList* list);
+4
+    bool Valid() const;
+5
+    const Key& key() const;
+6
+    void Next();
+7
+    void Prev();
+8
+    void Seek(const Key& target);
+9
+    void SeekToFirst();
+10
+    void SeekToLast();
+11
+   private:
+12
+    const SkipList* list_;
+13
+    Node* node_;
+14
   };
 ```
 
@@ -251,20 +328,14 @@ class Iterator {
 
 删除类似插入，找到所有下一层是我们删除的 `node` 的节点 `pre`，然后将 `pre.next = node.next`，然后直到 `level == 0`，将 `node[n]` 回收
 
-但是在 LevelDB 中，删除操作也是插入操作，因为删除操作本身也是一条记录，真正的删除是在 ImmuTable Compaction 到 Level_0 的时候删除
-
-## 内存管理 Arena
+## 内存管理
 
 #### 成员变量
 
 - `alloc_ptr_`：当前已使用内存的指针
-
 - `blocks_`：实际分配的内存池
-
 - `alloc_bytes_remaining_`：剩余内存字节数
-
 - `memory_usage_`：记录内存的使用情况
-
 - `kBlockSize`：一个块大小(4k)
 
 #### 成员函数
@@ -272,40 +343,41 @@ class Iterator {
 需要注意的是 `AllocateFallback` 函数
 
 ```cpp
-inline char* Arena::Allocate(size_t bytes) {
-  assert(bytes > 0);
-  if (bytes <= alloc_bytes_remaining_) {
-    char* result = alloc_ptr_;
-    alloc_ptr_ += bytes;
-    alloc_bytes_remaining_ -= bytes;
-    return result;
-  }
-  return AllocateFallback(bytes);
-}
-
+1
 char* Arena::AllocateFallback(size_t bytes) {
-  if (bytes > kBlockSize / 4) {
-    char* result = AllocateNewBlock(bytes);
-    return result;
+2
+  if (bytes > kBlockSize / 4) {
+3
+    char* result = AllocateNewBlock(bytes);
+4
+    return result;
+5
   }
-
-  alloc_ptr_ = AllocateNewBlock(kBlockSize);
-  alloc_bytes_remaining_ = kBlockSize;
-
-  char* result = alloc_ptr_;
-  alloc_ptr_ += bytes;
-  alloc_bytes_remaining_ -= bytes;
-  return result;
+6
+​
+7
+  alloc_ptr_ = AllocateNewBlock(kBlockSize);
+8
+  alloc_bytes_remaining_ = kBlockSize;
+9
+​
+10
+  char* result = alloc_ptr_;
+11
+  alloc_ptr_ += bytes;
+12
+  alloc_bytes_remaining_ -= bytes;
+13
+  return result;
+14
 }
 ```
 
-当 `bytes` 大于 `kBlockSize/4` 时，是大内存，如果我们直接分配一个 `Block` 的话，那么剩下的空位比较小，那么此 `Block` 复用次数比较少，并且此时可能有 `1/4` 的左侧资源被浪费，所以选择按需分配
+当 `bytes` 大于 `kBlockSize/4` 时，是大内存，如果我们直接分配一个 `Block` 的话，那么剩下剩下的空位比较小，那么此 `Block` 复用次数比较少，并且此时可能有 `1/4` 的左侧资源被浪费，所以选择按需分配
 
 当 `bytes` 小于 `kBlockSize/4` 时，此时新开一个 `Block`，既可以大量复用，又可以减少左侧资源的浪费
 
 左侧资源指当前 `Block` 的 `alloc_bytes_remaining_`
-
-需要注意的是，当出现 `AllocateFallback` 的时候，说明左侧资源已经不够当前使用了，所以当出现 `kBlockSize/4` 以下的内存都不能放进去的时候，只有浪费掉现在左侧资源了，然后新开一个 
 
 ## 引用计数
 
@@ -315,57 +387,40 @@ char* Arena::AllocateFallback(size_t bytes) {
 
 #### 各种 key
 
-关系如下图所示
-
-![](./../img/20200328165508760.png)
-
-##### SequenceNumber + ValueType
-
-LevelDB每次更新（put/delete）操作都拥有一个版本，由 SequenceNumber 来标识，整个 LevelDB 有一个全局值保存着当前使用到的 SequenceNumber。Key 的排序、Compact 以及SnapShot都依赖着它。每次操作是 put 操作还是 delete 操作由 ValueType 来标识。
-
-##### Key
-
 - `user_key`：用户输入的数据 `key`(`slice` 格式)
 - `ParsedInternalKey`：
   - 是对`InternalKey`的解析，因为`InternalKey`是一个字符串
-  - `Slice user_key + SequenceNumber sequence + ValueType type`
+  - `Slice user_key`;
+  - `SequenceNumber sequence`
+  - `ValueType type`
 - `InternalKey`：
-- 内部 `key`，常用来比如 `key` 比较等场景，常用于 SSTable 的查询
-  
-- `std::string rep_`
-- `Memtable Entry`：
-  - 故名思义：存储在 `memtable` 中的 `key`，这个 `key` 比较特殊他是包含 `value` 的，也就是 LookupKey
-- `Lookup key`：
-- 用于 `DBImpl::Get` 中
-  
-- 成员变量
-  
-  - `char space_[200]`，`lookup` 中有一个细小的内存优化，就是类似 `string` 的 `sso` 优化。其优化在于，当字符串较短时，直接将其数据存在栈中，而不去堆中动态申请空间，这就避免了申请堆空间所需的开销。
-  
-  - `const char* start_`
-  
-  - `const char* kstart_;`
-  
-  - `const char* end_;`
+  - 内部 `key`，常用来比如 `key` 比较等场景
+  - `std::string rep_`
+- `memtable key`：
+  - 故名思义：存储在 `memtable` 中的 `key`，这个 `key` 比较特殊他是包含 `value` 的
+- `lookup key`：
+  - 用于 `DBImpl::Get` 中
+  - 成员变量
+    - `char space_[200]`，`lookup` 中有一个细小的内存优化，就是类似 `string` 的 `sso` 优化。其优化在于，当字符串较短时，直接将其数据存在栈中，而不去堆中动态申请空间，这就避免了申请堆空间所需的开销。
+    - `const char* start_`
+    - `const char* kstart_;`
+    - `const char* end_;`
+
+关系如下图所示
+
+<img src="../img/f919f5bb-7a17-4edb-918b-1d98edd3e01f.png" style="zoom:50%;" />
 
 #### 各种 compare
 
 ##### 成员函数
 
 - `Compare()`：支持三种操作：大于/等于/小于
-
 - `Name()` ：比较器名字，以 LevelDB 开头
-
 - `FindShortestSeparator`：
-
   - 这些功能用于减少索引块等内部数据结构的空间需求。
-
   - 如果 `*start < limit`，则将 `*start` 更改为 `[start,limit)` 中的短字符串。
-
   - 简单的比较器实现可能会以 `*start` 不变返回，即此方法的实现不执行任何操作也是正确的。
-
   - 然后在调用 `Compare` 函数
-
 - `FindShortSuccessor`：将 `*key` 更改为 `string >= *key.Simple` 比较器实现可能会在 `*key` 不变的情况下返回，即，此方法的实现是正确的。
 
 特点：必须要支持线程安全
@@ -379,22 +434,16 @@ WriteBatch 使用批量写来提高性能，支持 put 和 delete。
 #### 成员变量
 
 - `rep_`：WriteBatch 具体数据
-
 - `WriteBatchInternal`：内部工具性质的辅助类
 
 #### 成员函数
 
 - `Put`：存储 `key` 和 `value` 信息
-
 - `Delete`：追加删除 `key` 信息
-
 - `Append`：多个 WriteBatch 还可以继续合并
-
 - `Iterate`：
   - 遍历该 `batch` 结构，为了方便扩展，参数使用的是 `Handler` 基类，对应的是抽象工厂模式
-  
   - `MemTableInserter` 子类：对 `memtable` 的操作
-  
 - `ApproximateSize`：内存状态信息
 
 这里运用了两个技巧 `b->rep_.data()+8` 和 `&b->rep_[8]`
@@ -404,47 +453,89 @@ WriteBatch 使用批量写来提高性能，支持 put 和 delete。
 重点讲解一下 `Iterate`
 
 ```cpp
+1
 Status WriteBatch::Iterate(Handler* handler) const {
-  Slice input(rep_);
-  if (input.size() < kHeader) {
-    return Status::Corruption("malformed WriteBatch (too small)");
+2
+  Slice input(rep_);
+3
+  if (input.size() < kHeader) {
+4
+    return Status::Corruption("malformed WriteBatch (too small)");
+5
   }
+6
 // 删除 SeqNum 还有 key number
-  input.remove_prefix(kHeader);
-  Slice key, value;
-  int found = 0;
-  while (!input.empty()) {
-    found++;
-    // 解析当前的 key value 状态，[kTypeValue, kTypeDeletion]
-    char tag = input[0];
-    // 取出来了，直接删除
-    input.remove_prefix(1);
-    switch (tag) {
-      case kTypeValue:
-        if (GetLengthPrefixedSlice(&input, &key) &&
-            GetLengthPrefixedSlice(&input, &value)) {
-          // 插入到 memtable 内
-          handler->Put(key, value);
-        } else {
-          return Status::Corruption("bad WriteBatch Put");
-        }
-        break;
-      case kTypeDeletion:
-        if (GetLengthPrefixedSlice(&input, &key)) {
-          handler->Delete(key);
-        } else {
-          return Status::Corruption("bad WriteBatch Delete");
-        }
-        break;
-      default:
-        return Status::Corruption("unknown WriteBatch tag");
-    }
+7
+  input.remove_prefix(kHeader);
+8
+  Slice key, value;
+9
+  int found = 0;
+10
+  while (!input.empty()) {
+11
+    found++;
+12
+    // 解析当前的 key value 状态，[kTypeValue, kTypeDeletion]
+13
+    char tag = input[0];
+14
+    // 取出来了，直接删除
+15
+    input.remove_prefix(1);
+16
+    switch (tag) {
+17
+      case kTypeValue:
+18
+        if (GetLengthPrefixedSlice(&input, &key) &&
+19
+            GetLengthPrefixedSlice(&input, &value)) {
+20
+          // 插入到 memtable 内
+21
+          handler->Put(key, value);
+22
+        } else {
+23
+          return Status::Corruption("bad WriteBatch Put");
+24
+        }
+25
+        break;
+26
+      case kTypeDeletion:
+27
+        if (GetLengthPrefixedSlice(&input, &key)) {
+28
+          handler->Delete(key);
+29
+        } else {
+30
+          return Status::Corruption("bad WriteBatch Delete");
+31
+        }
+32
+        break;
+33
+      default:
+34
+        return Status::Corruption("unknown WriteBatch tag");
+35
+    }
+36
   }
-  if (found != WriteBatchInternal::Count(this)) {
-    return Status::Corruption("WriteBatch has wrong count");
+37
+  if (found != WriteBatchInternal::Count(this)) {
+38
+    return Status::Corruption("WriteBatch has wrong count");
+39
   } else {
-    return Status::OK();
+40
+    return Status::OK();
+41
   }
+42
 }
 ```
 
@@ -495,23 +586,35 @@ Status WriteBatch::Iterate(Handler* handler) const {
 `WritableFileImpl` 是 `WritaebleFile` 的具体实现，主要利用成员 `FileState*` 进行工作
 
 ```cpp
+1
 class WritableFileImpl : public WritableFile {
+2
  public:
-  WritableFileImpl(FileState* file) : file_(file) { file_->Ref(); }
-  ~WritableFileImpl() override { file_->Unref(); }
-  Status Append(const Slice& data) override { return file_->Append(data); }
-  Status Close() override { return Status::OK(); }
-  Status Flush() override { return Status::OK(); }
-  Status Sync() override { return Status::OK(); }
-
+3
+  WritableFileImpl(FileState* file) : file_(file) { file_->Ref(); }
+4
+  ~WritableFileImpl() override { file_->Unref(); }
+5
+  Status Append(const Slice& data) override { return file_->Append(data); }
+6
+  Status Close() override { return Status::OK(); }
+7
+  Status Flush() override { return Status::OK(); }
+8
+  Status Sync() override { return Status::OK(); }
+9
+​
+10
  private:
-  FileState* file_;
+11
+  FileState* file_;
+12
 };
 ```
 
 其中 `FileState` 的 `Ref` 和 `Unref` 都是简单的引用计数操作，`Append` 就是将 `Slice` 插入到文件末尾，并且根据 `BlockSize` 分块
 
-#####  `PosixWritableFile`
+##### `PosixWritableFile`
 
 ```cpp
 class PosixWritableFile final : public WritableFile;
@@ -519,13 +622,13 @@ class PosixWritableFile final : public WritableFile;
 
 ###### 成员变量
 
-* `kWritableFileBufferSize`：作为缓冲区，默认大小为 64k
-* `char buf_[kWritableFileBufferSize]`
-* `pos_`：`buf_` 当前已经使用的字节位置
-* `fd_`：当前文件，对应的 fd
-* `is_manifest_`：判断是否是 `manifest` 文件，因为 `manifest` 文件需要实时刷盘
-* `filename_`：文件名字
-* `dirname_`：文件所在的目录
+- `kWritableFileBufferSize`：作为缓冲区，默认大小为 64k
+- `char buf_[kWritableFileBufferSize]`
+- `pos_`：`buf_` 当前已经使用的字节位置
+- `fd_`：当前文件，对应的 fd
+- `is_manifest_`：判断是否是 `manifest` 文件，因为 `manifest` 文件需要实时刷盘
+- `filename_`：文件名字
+- `dirname_`：文件所在的目录
 
 ###### 成员函数
 
@@ -582,11 +685,8 @@ class PosixRandomAccessFile final : public RandomAccessFile;
 ###### 成员变量
 
 - `has_permanent_fd_`：表示是否每次 `read` 都需要打开文件
-
 - `fd_`：`has_permanent_fd_=false`，`fd_` 一直等于 -1
-
 - `fd_limiter_`：资源限制相关的
-
 - `filename_`：文件名
 
 ###### 成员函数
@@ -649,7 +749,7 @@ LevelDB 中使用 `mmap` 共享内存来提高性能。
 
 5. 需要特别注意两个信号：SIGBUG 和 SIGSEGV
    1. SIGBUG：表示我们在内存范围内访问，但是超出了底层对象的大小
-   2.  SIGSEGV：表示我们已经在内存映射范围外访问了。
+   2. SIGSEGV：表示我们已经在内存映射范围外访问了。
 
 <img src="../img/6bfe07d3-4db3-4b0f-9d96-26db07167a20.png" alt="img" style="zoom:50%;" />
 
@@ -661,11 +761,8 @@ LevelDB 中使用 `mmap` 共享内存来提高性能。
 
 - `PosixSequentialFile`
   - 使用 `read()` 在文件中实现顺序读取访问，非线程安全。
-  
   - `fd_`：文件描述符
-  
   - `filename_`：文件名称
-  
 - `WindowsSequentialFile`
 
 #### FileLock
@@ -717,7 +814,7 @@ enum FileType {
 
 `MANIFEST` 文件列出了组成每个级别的一组排序表、相应的键范围和其他重要的元数据。 每当重新打开数据库时，都会创建一个新的 `MANIFEST` 文件（文件名中嵌入了一个新编号）。 `MANIFEST` 文件被格式化为日志，并且对服务状态所做的更改（如文件的添加或删除）追加到此日志中。
 
--  **`Current`**
+- **`Current`**
 
 `CURRENT` 是一个简单的文本文件，其中包含最新的 `MANIFEST` 文件的名称。
 
@@ -885,9 +982,7 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
 #### 成员变量
 
 - `length_`：哈希表的总长度
-
 - `elems_`：当前哈希表的实际元素个数
-
 - `list_`：实际存储的数据，底层结构
 
 #### 成员函数
@@ -904,37 +999,25 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
 
 需要注意的几个点
 
-* `hash` 是 `key Hash()` 后得到的，这个值可能没有落在 `0 ~ length_ - 1` 上，所以需要 `hash & (length - 1)`
-
-* `list_` 其实就是指向这个 `HandleTable` 第一个元素，之后的 `LRUHandle**` 也都是指向数组中的某个元素
-
-* `next_hash` 其实就是拉链法，也就是上图中竖着的部分
-
-* `Resize` 只有在 `length_` 超过 4 的时候才二倍增长
-* `Resize` 的时候和 `std::vector` 扩容的方式一样，先申请一个 `2 * length_` 大小的容器，然后将当前容器中的元素以某种方式放入新的容器中，最后销毁此容器
+- `hash` 是 `key Hash()` 后得到的，这个值可能没有落在 `0 ~ length_ - 1` 上，所以需要 `hash & (length - 1)`
+- `list_` 其实就是指向这个 `HandleTable` 第一个元素，之后的 `LRUHandle**` 也都是指向数组中的某个元素
+- `next_hash` 其实就是拉链法，也就是上图中竖着的部分
+- `Resize` 只有在 `length_` 超过 4 的时候才二倍增长
+- `Resize` 的时候和 `std::vector` 扩容的方式一样，先申请一个 `2 * length_` 大小的容器，然后将当前容器中的元素以某种方式放入新的容器中，最后销毁此容器
 
 ## LRUHandle
 
 #### 成员变量
 
 - `void* value`：具体的值，指针类型
-
 - `void (*deleter)(const Slice&, void* value)`：自定义回收节点的回调函数
-
 - `LRUHandle* next_hash`：用于 `hashtable` 冲突时，下一个节点
-
 - `LRUHandle* next`：代表 LRU 中双向链表中下一个节点
-
 - `LRUHandle* prev`：代表 LRU 中双向链表中上一个节点
-
 - `size_t charge`：记录当前 `value` 所占用的内存大小，用于后面超出容量后需要进行 `lru`
-
 - `size_t key_length`：数据 `key` 的长度
-
 - `bool in_cache`：表示是否在缓存中
-
 - `uint32_t refs`：引用计数，因为当前节点可能会被多个组件使用，不能简单的删除
-
 - `uint32_t hash`：记录当前 `key` 的 `hash` 值
 
 需要格外注意：该节点很巧妙，既可以用做 `hashtable`，又可以用于 `lru` 缓存节点
@@ -981,19 +1064,12 @@ LRUHandle* Insert(LRUHandle* h) {
 #### 成员变量
 
 - `capacity_`：LRU 容量，可以不固定：字节数或者条数均可
-
 - `mutable port::Mutex mutex_`：保护 `LRUCache` 操作
-
 - `size_t usage_ GUARDED_BY(mutex_)`：获取当前 `LRUCache` 已经使用的内存
-
 - `LRUHandle lru_ GUARDED_BY(mutex_)`：
-
   - 只存在缓存中的节点 `refs==1` and `in_cache==true`
-
   - `lru.prev is newest entry, lru.next is oldest entry`
-
 - `LRUHandle in_use_ GUARDED_BY(mutex_)`：既存在缓存中 `in_cache==true`，又被外部引用的节点 `refs >= 2`
-
 - `HandleTable table_ GUARDED_BY(mutex_)`：用于快速获取某个节点
 
 #### 成员函数
@@ -1079,13 +1155,9 @@ void LRUCache::Unref(LRUHandle* e) {
 #### 成员变量
 
 - `LRUCache shard_[kNumShards]`：
-
 - `port::Mutex id_mutex_`
-
 - `uint64_t last_id_`
-
 - `static const int kNumShardBits = 4`
-
 - `static const int kNumShards = 1 << kNumShardBits`
 
 #### 成员函数

@@ -4,6 +4,28 @@
 
 
 
+## MemTable
+
+Memtable 以一个个 Entry 为单元进行存储，Entry 结构图如下：
+
+![](./../img/20200328165508760.png)
+
+MemTable 使用 SkipList 来管理 Entry
+
+1. Memtable 的 Get 中对取得的 Value 值都是直接拷贝的，如果 Value 越大，消耗则越大。
+2. Memtable 是利用 Lookupkey 来作为 key 使用。
+3. SkipList 第 0 层是从小到大排序的。
+
+### Add
+
+![image-20240208170220938](./../img/image-20240208170220938.png)
+
+在 MemTable 中主要是将 KV 封装成 LookupKey。
+
+### Get
+
+![image-20240208171048043](./../img/image-20240208171048043.png) 在 MemTable 中主要进行 UserKey 位置的寻找和 ValueType 的判断。
+
 ## SSTable
 
 <img src="./../img/0936a8b7-e828-49ec-b97a-c71c7d05222d.png" style="zoom: 80%;" />
