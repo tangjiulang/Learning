@@ -611,12 +611,20 @@ Status TableBuilder::Finish() {
 #### 读取流程
 
 1. 读取固定长度的 `Footer`，得到指向 `meta index block` 地址的数据
+
 2. 调用 `ReadBlock` 函数，解析出 `filter block` 的位置
+
 3. 得到 `filter block` 位置之后，就可以反解析出 `filter block` 信息
+
+   # Cache
+
+   ![image-20240210210309855](./../img/image-20240210210309855.png)
 
 ## SSTable 中的缓存
 
 ### Table Cache
+
+![](./../img/20200704121438374.png)
 
 TableCache 缓存的是 Table 对象，每个 DB 一个，它内部使用一个 LRUCache 缓存所有的 table 对象，实际上其内容是文件编号{``file number`, `TableAndFile*``}。
 
