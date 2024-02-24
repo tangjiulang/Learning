@@ -1,4 +1,4 @@
-# `const`
+# const
 
 **`const`对象必须初始化**
 
@@ -54,7 +54,7 @@ void Number::set(const Number *const this, int num) { number = num; }
 // 仅作为参考，实际上，C++规定显式定义this指针为非法操作
 ```
 
-# `Static`
+# Static
 
 **静态成员变量有以下特点：**
 
@@ -100,7 +100,7 @@ void Number::set(const Number *const this, int num) { number = num; }
 1. 静态函数不能被其它文件所用；
 2. 其它文件中可以定义相同名字的函数，不会发生冲突；
 
-# `this`
+# this
 
 1）一个对象的`this`指针并不是对象本身的一部分，不会影响`sizeof`(对象)的结果。
 
@@ -114,7 +114,7 @@ void Number::set(const Number *const this, int num) { number = num; }
 
 `this` 本身是一个 `T* const` 指针，在成员函数的开始执行前构造，在成员的执行结束后清除
 
-# `sizeof`
+# sizeof
 
 - 空类的大小为1字节
 - 一个类中，虚函数本身、成员函数（包括静态与非静态）和静态数据成员都是不占用类对象的存储空间。
@@ -123,14 +123,14 @@ void Number::set(const Number *const this, int num) { number = num; }
 - 虚函数继承，不管是单继承还是多继承，都是继承了基类的`vptr`。(32位操作系统4字节，64位操作系统 8字节)！
 - 虚继承,继承基类的`vptr`。
 
-# `volatile`
+# volatile
 
 - `volatile` 关键字是一种类型修饰符，用它声明的类型变量表示可以被某些编译器未知的因素（操作系统、硬件、其它线程等）更改。所以使用 `volatile` 告诉编译器不应对这样的对象进行优化。
 - `volatile` 关键字声明的变量，每次访问时都必须从内存中取出值（没有被 `volatile` 修饰的变量，可能由于编译器的优化，从 CPU 寄存器中取值）
 - `const` 可以是 `volatile` （如只读的状态寄存器）
 - 指针可以是 `volatile`
 
-# `union`
+# union
 
 联合（`union`）是一种节省空间的特殊的类，一个 `union` 可以有多个数据成员，但是在任意时刻只有一个数据成员可以有值。当某个成员被赋值后其他成员变为未定义状态。联合有如下特点：
 
@@ -143,7 +143,7 @@ void Number::set(const Number *const this, int num) { number = num; }
 - 匿名 `union` 不能包含 `protected` 成员或 `private` 成员
 - 全局匿名联合必须是静态（`static`）的
 
-# `explicit`
+# explicit
 
 - explicit 修饰构造函数时，可以防止隐式转换和复制初始化
 - explicit 修饰转换函数时，可以防止隐式转换，但按语境转换除外
@@ -203,7 +203,7 @@ int main() {
 }
 ```
 
-# `friend`
+# friend
 
 友元提供了一种 普通函数或者类成员函数 访问另一个类中的私有或保护成员 的机制。也就是说有两种形式的友元：
 
@@ -230,7 +230,7 @@ int main() {
 - 友元关系没有继承性 假如类B是类A的友元，类C继承于类A，那么友元类B是没办法直接访问类C的私有或保护成员。
 - 友元关系没有传递性 假如类B是类A的友元，类C是类B的友元，那么友元类C是没办法直接访问类A的私有或保护成员，也就是不存在“友元的友元”这种关系。
 
-# `decltype`
+# decltype
 
 `decltype` 的作用是“查询表达式的类型”
 
