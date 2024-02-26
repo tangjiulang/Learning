@@ -78,14 +78,13 @@ int& b_vol_ref = static_cast<int&>(a_vol_ref); // volatile int& -> int& 无效
 
 #### const_cast
 
-const_cast`的作用是去除掉`const`或`volitale`属性，前面介绍`static_cast`的时候我们知道`static_cast`是不具备这种功能的。使用格式如下：
-`
+`const_cast`的作用是去除掉`const`或`volitale`属性，前面介绍`static_cast`的时候我们知道`static_cast`是不具备这种功能的。使用格式如下：
 
 ```cpp
 const_cast<type_id>(expression);
 ```
 
-注意，在移除const之后假如真的向目标进行写操作将导致UB。
+注意，在移除 `const` 之后假如真的向目标进行写操作将导致UB。
 
 如果一个变量本来就不具备`const`属性，但是在传递过程中被附加了`const`属性，这时候使用`const_cast`就能完美清除掉后面附加的那个`const`属性了。
 

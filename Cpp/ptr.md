@@ -1,4 +1,4 @@
-## `shared_ptr` 和 `weak_ptr`
+## shared_ptr 和 weak_ptr
 
 当 `shared_ptr` 中的 `use_count == 0` 时，资源释放
 
@@ -146,13 +146,13 @@ bye bye node
 
 适度使用 `shared_ptr`：`shared_ptr` 带有引用计数的开销，每次增减引用计数都需要一定的开销。因此，对于生命周期较短、无需共享的对象，可以考虑使用 `unique_ptr` 来避免引用计数的开销。
 
-## `auto_ptr`
+## auto_ptr
 
 c++11禁用
 
 可以发现`std::auto_ptr`的失败在于CXX03中并不支持移动语义，而`std::auto_ptr` 却试图用复制构造函数来实现移动构造函数的功能，结果导致其无法与`vector` 等容器兼容，论为失败品。
 
-## `unique_ptr`
+## unique_ptr
 
 1. 禁止复制构造函数、复制赋值的重载，即设置为`=delete`；
 2. 实现各种移动构造函数；
