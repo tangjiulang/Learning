@@ -43,7 +43,7 @@
 
 `Compact` 将多个 `SSTable` 合并成一共，然后将无用的数据清除掉，合并的新文件也根据 `key` 排序的
 
-#### Size-Tiered Compaction Strategy(STCS)
+### Size-Tiered Compaction Strategy(STCS)
 
 当 `immutable memtable` 逐步写入到 `SSTable` 中的时候，如果 `small SSTable` 达到一定的阈值，就合并成一共 `middle SSTable`，如果 `middle SSTable` 到达一定的阈值时，合并成一个 `big SSTable`，以此类推
 
@@ -69,7 +69,7 @@ STCS 能有效的减少 `SSTable` 的数量，同一份数据在 `Compact` 期�
 
 此时，我们对于同样的数据，有三个不同的副本，并且不能进行 `Compact`，这就导致了大量的空间被浪费，所以对于覆盖写较少的场景，STCS 的空间放大尚可接受；但是对于覆盖写频繁的场景，STCS 便不再是一个很好的选择。
 
-#### Leveled Compaction Strategy(LCS)
+### Leveled Compaction Strategy(LCS)
 
 ##### 特点：
 
@@ -107,6 +107,54 @@ LCS 虽然解决了空间放大，但是也引入了另一个问题 -- **写入�
 如果一个数据要被写入到 L4 的话，就会被写入 6 次，分别是 L0，L1，L2，L3，L4，WAL
 
 #### 并发控制和恢复
+### Hybrid
+
+Tiered 和 Leveled 混合的方式。很多系统使用两者混合的方式以取得读写放大、空间放大之间进一步的权衡
+
+#### Time Series
+
+- 索引 key 和写入时间相关
+- 数据按照时间顺序写入，只有少量数据不遵守这个顺序
+- 数据只能通过 TTL(Time to Live 是指存储在数据库中的数据记录或文档的生存时间。TTL是一种在数据库中设置的过期时间，用于控制数据在数据库中的有效期限) 或者删除整个 partition(分区是一种将大型数据库表或索引分割成更小、更可管理的部分的技术。通过将数据分布在多个分区中，可以提高查询性能、简化数据维护和管理，并支持更高的可伸缩性) 来删除
+- 数据写入的速度几乎是恒定的
+- 数据查询通常是在一个特定的 partition 中的，例如 "values from the last hour/day/week"
+
+#### Rocksdb
+
+Rocksdb 的 Leveled Compaction实现实际上是结合了 Tiered，level0 是 Tiered 的实现方式，除 Level0 层外其它都是 leveled。level0 的每个 run 由一次 flush memtables 得来，多个run 之间范围有交叠，其它 Levels 由多个 Sstables 组成一个有序的 run。这种结合方式的好处一是减小了写入放大，二是可以在写入负载较高时快速释放 memtable 以缓解内存的压力。Leveled 是 Rocksdb 默认的 Compaction 方式。
+
+##### Tiered(Universal)
+
+tiered在最大层维护全量的N份副本会带来N倍的空间放大，rocksdb增加了参数来限制最差的空间放大，最多只允许最大层有K个runs，K的范围是2～N。
+
+tiered在rocksdb中是依赖Universal Compaction来实现的，用户使用leveled无法应对高写入的速率时可以尝试使用Universal Style。
+
+##### Leveled-n
+
+Leveled-n 是 Leveled 优化了写放大的实现方式，允许每层有多个有序的 runs，Compaction 时 merge L-1 层的所有 runs 和 Ln的一个sort run，Dostoevsky中提出的 lazying compaction 也是类似的思想，本质上是通过调整最大层 run 的数量和相邻 Level 的 size 比 T 来平衡读写放大和空间放大。
+
+## 挑战
+
+compaction 过程中对 io/cpu 资源的消耗
+
+compaction 完成时造成批量的 Cache 失效。
+
+另外一个在 LSM-Tree这种结构下存在的比较棘手的问题是需要 delete 的记录不能立刻被消除，要消除的记录可能会存在每一层，需要通过全量的 Compaction 才能消除，这对资源是非常大的消耗。
+
+### 资源消耗
+
+任务运行时的压缩/解压缩、拷贝、Compare 消耗 cpu 资源，读写数据消耗i/o资源。
+
+### Cache 失效
+
+Compaction 完成生效时旧数据文件失效，Cache 中的数据同样也会失效，Compaction 任务越大数据越热，Cache 失效越严重。Cache miss率升高引起大量的读 i/o，读 i/o 请求与Compaction 任务执行时读文件请求之间进一步争抢资源，加剧读性能的降低。
+
+### delete entries
+
+- 在 LSM-Tree中，delete/update 都是写一条新的记录，delete 记录一般使用一位 flag 来区分，delete 记录堆积会带来更多的空间放大和写放大，更为严重的是在 range delete 场景下，读性能会受到很大影响。而目前系统消除 delete 的方式需要触发全量的 Compaction，带来过多的资源消耗，这是一种非常贵的解决方式。Rocksdb 实现了根据 delete 记录的分布来挑选文件来合并的优化方式，以达到消除 delete 和相关记录的目的，这样可以避免一些多余的数据合并，是一种优化手段，但是对于 delete 广泛分布在各个文件中的情况依然无法避免全量的 Compaction。
+- 对统计信息的影响，如果是用在关系型数据库中，例如 myrocks，会导致统计信息不准影响 sql 优化器的决策。
+- Lethe 论文中还提到带来侵犯隐私的风险，用户要求删除的数据没有在一定时间内物理删除，甚至在用户注销后数据还存在，会引起法律风险。
+
 ## 优化
 
 #### 写入放大
@@ -133,3 +181,12 @@ Skip-tree 提到，如果现在的数据在第 k 层，而 k + 1 到 k + N - 1 �
 #### 数据偏斜场景
 
 TRIAD 减少了一些不均匀数据分布中需要频繁更新热键的写入放大
+
+## 分布式 KV Store 的 Compaction 管理
+
+### Smart Cache
+
+按照key range增量地填充并淘汰对应key range的旧数据，这样不会造成大批量的原本在caceh中的数据被淘汰。对于请求的数据，要么落在旧的cache中，要么落在新填充的cache中，很小的概率是属于刚被淘汰而还未被填充的数据范围。因此这种方式效果测试很好，几乎没有cache miss。
+
+分布式场景下可以从外部方式来解决compaction带来的问题，这是单机系统做不到的，像smart cache这种解决方式，在单机中无法同时在内存中保存新旧两份数据，避免不了性能的抖动，而在分布式场景下，利用远程的内存保存新的数据并一点点地替换掉本地的cache，而compaction前后的数据对于读请求返回的是一致的结果，因此这种方式可以保证正确性，也达到了很好的效果。
+
