@@ -448,11 +448,50 @@ Status WriteBatch::Iterate(Handler* handler) const {
 }
 ```
 
+实际操作 rep_ 的函数都存储在 WriteBatchInternal 类中。WriteBatchInternal 作为 WriteBatch 的友元类，这样的代码结构，目的为了函数结构看起来更加整洁。即将操作 rep_ 成员数据的一些函数放到类 WriteBatchInternal 中。
+
+```cpp
+Status WriteBatchInternal::InsertInto(const WriteBatch* b, MemTable* memtable) {
+  MemTableInserter inserter;
+  inserter.sequence_ = WriteBatchInternal::Sequence(b);
+  inserter.mem_ = memtable;
+  return b->Iterate(&inserter);
+}
+```
+
+接口 `WriteBatchInternal::InsertInto` 作用就是将 输入的 WriteBatch 对象维护的批量key-value 数据插入到指定的 Memtable 对象中。
+
+### MemTableInserter
+
+MemTableInserter 类存在的意义，就是为了实现 WriteBatch 批量插入 key-value 到 MemTable 中
+
+**内嵌类存在的意义是做为外部类（WriteBatch）功能实现的底层实现。**
+
+```cpp
+namespace {
+class MemTableInserter : public WriteBatch::Handler {
+ public:
+  SequenceNumber sequence_;
+  MemTable* mem_;
+
+  void Put(const Slice& key, const Slice& value) override {
+    mem_->Add(sequence_, kTypeValue, key, value);
+    sequence_++;
+  }
+  void Delete(const Slice& key) override {
+    mem_->Add(sequence_, kTypeDeletion, key, Slice());
+    sequence_++;
+  }
+};
+```
+
+
+
 ## Env 家族
 
 <img src="../img/c7cc89ec-b621-4bd6-9eb9-da89005ef598.png" style="zoom:50%;" />
 
-由上图可知，该内就是一个纯虚类
+由上图可知，该类就是一个纯虚类
 
 `New` 开头的成员函数，其 `Status` 表示函数执行状态，而实际生成的对象是在函数的第二个参数，现代 `C++` 不建议这样操作。
 
@@ -511,7 +550,7 @@ class WritableFileImpl : public WritableFile {
 
 其中 `FileState` 的 `Ref` 和 `Unref` 都是简单的引用计数操作，`Append` 就是将 `Slice` 插入到文件末尾，并且根据 `BlockSize` 分块
 
-#####  `PosixWritableFile`
+#####  PosixWritableFile
 
 ```cpp
 class PosixWritableFile final : public WritableFile;
@@ -593,7 +632,7 @@ class PosixRandomAccessFile final : public RandomAccessFile;
 
 简单的构造函数还有析构函数，以及 `Read` 函数
 
-##### `PosixMmapReadableFile`
+##### PosixMmapReadableFile
 
 LevelDB 中使用 `mmap` 共享内存来提高性能。
 

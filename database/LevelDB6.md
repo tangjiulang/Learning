@@ -152,7 +152,29 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
 
 ![image-20240204014720308](./../img/image-20240204014720308.png)
 
+## 目的
+
+1. 由于LevelDB为标记删除，需要释放delete的Key-Value。
+2. 由于每次写入为直接追加，同一个Key存在多个版本。合并过期的数据。
+3. 均衡各个Level文件的个数，保证查找效率。
+4. 将多次Get miss的SSTable放入更高层，减少不必要的I/O，提升效率。跟新频繁的在低层Level。
+
+## 分类
+
+major compaction分为三类：
+
+- **Manual Compaction**：手动指定Level，start key和end key进行compaction。
+
+- **Size Compaction**：LSM 树 Level 0 的文件个数太多，或者其它层的文件总大小太大，超过阈值，则设置 `Version* v; v->compaction_score`为一个大于 1 的数，根据**每一层的文件大小计算**。若在 LSM 树中，存在多个大于 score 大于 1  的层，选择最大的那一层执行 comapction。某个 Level 的 score 计算如下：
+  $$
+  compaction\_score=\frac{整个 Level 的文件大小总和}{当前 Level 的文件大小总和阈值}
+  $$
+
+- **Seek Compaction**：每一个SSTable都有一个 `allowed_seek`的阈值。每次调用 Get 并查询当前 SSTable 出现 miss 时，会将 `allowed_seek `减一。对值为 0 的 SSTable 执行 compact。
+
 ## 压缩基本思想
+
+LSM 树中，同一层内的 Key 是有序的，但不同层之间的 Key 可能存在重叠。在 Get 过程中，在 Level n 定位到一个待查找的 SSTable 的 key-range 为 A-D。Level n+1 定位到的 SSTable 的Key-range 为 A-E。由于二者 Key 的范围存在交集，第一次查找 miss，第二次查找才找到。如果多次查找**总要到更高层次查找**，造成大量 I/O 操作，影响数据库性能。所以需要对**有重叠的SStable**进行 compaction。
 
 所有重叠的 Level + 1 层文件都要参与 Compact，得到这些文件后反过来看下，如果在不增加 Level + 1 层文件的前提下，看能否增加 Level 层的文件。也就是在不增加 Level + 1 层文件，同时不会导致 Compact 的文件过大的前提下，尽量增加 Level 层的文件数。
 
@@ -161,6 +183,21 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
 Level 与 Level + 1 层归并压缩之后，最后的文件是要放到 Level + 1 层的，在方法 SetupOtherInputs(c) 中获取到压缩之后的 key 范围 [all_start，all_limit]，并查询出 Level + 2 层与Level + 1 层 Overlap 的 SSTable，存放与 grandparents_ 中，主要是降低level层与level+1层压缩
 
 具体函数讲解可以参考 [LevelDB5]
+
+#### 什么时候一个在归并时一个Key要被删除。
+
+- 该Key不是第一次出现。
+- 该Key在系统快照之外，Key的版本序列号小于最小Snaoshot版本号。
+- 该Key的ValueType为kTypeDeletion。且在Level n+1 以上的层中不存在该相同的Key。
+  用户在调用delete删除一个key时，这个key在数据库中有一个过期的key存在，而这个过期key还来不及和这个被删除的key合并。在这种情况下，直接将这个ValueTYpe为delete的key丢弃，那数据库中还会存在一个过期的key，而这个过期的key在丢弃那个被删除的key后就变成不过期的key，下次读该key时，会读到这个本应该过期的key，实际上应该是查找不到该key。为了系统正常，每次丢弃一个标记为kTypeDeletion的key时，必须保证数据库中不存在该过期key，否则就得将它保留，直到后面它和这个过期的key合并为止。
+
+## compaction 的作用
+
+- **数据持久化。**对内存中的数据持久化。
+- **提高读写效率**。写数据时直接append，效率非常高。同时通过compaction，将Key-Value压缩成分层，同一层之间SSTable不重叠的结构，避免全局遍历所有文件，提升读效率。
+- **平衡读写差异。**用户写入的速度可能始终大于major compaction的速度，导致Level 0 的文件数量不断上升，读效率降低。故对Level 0的写入文件加一限制。当Level 0 文件个数达到8个，减缓写入速度，达到12个时，暂停写入直到完成major compaction。
+  显然，该限制也成为了写性能瓶颈。
+- **整理数据。**整理合并过期的数据，减少磁盘空间的占用。
 
 # DBImpl
 

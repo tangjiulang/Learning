@@ -807,7 +807,7 @@ Compaction* VersionSet::PickCompaction() {
 
 #### SetupOtherInputs
 
-由于 GetOverlappingInputs 是开区间，所以如果现在有一个文件范围是 [l1, u1]，一个文件是 [l2, u2]，并且`user_key(u1) == user_key(u2)` 这个时候如果我们将 [l1, u1]，compact 到下一 Level，下一次查询就会在 Level 层提前返回数据，所以这个时候我们需要将 [l2, u2] 这个文件也列入 Compact 文件中，于是就有了 AddBoundaryInputs
+由于 GetOverlappingInputs 是开区间，所以如果现在有一个文件范围是 [l1, u1]，一个文件是 [l2, u2]，并且`user_key(u1) == user_key(l2)` 这个时候如果我们将 [l1, u1]，compact 到下一 Level，下一次查询就会在 Level 层提前返回数据，所以这个时候我们需要将 [l2, u2] 这个文件也列入 Compact 文件中，于是就有了 AddBoundaryInputs
 
 ```cpp
 FileMetaData* FindSmallestBoundaryFile(

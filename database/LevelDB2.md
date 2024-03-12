@@ -54,9 +54,9 @@ MemTable 使用 SkipList 来管理 Entry
 
 #### 成员变量
 
-- `offset_`：``meta index block/data index block` 偏移量
+- `offset_`：`meta index block/data index block` 偏移量
 
-- `size_`：``meta index block/data index block` 长度
+- `size_`：`meta index block/data index block` 长度
 
 - `kMaxEncodedLength` = 10 + 10
 
@@ -223,7 +223,7 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
 
 #### 写入流程
 
-- 第一步：``TableBuilder` 使用 `Add` 函数，来将比如 `immemtable` 中的数据 `dump` 下来
+- 第一步：`TableBuilder` 使用 `Add` 函数，来将比如 `immemtable` 中的数据 `dump` 下来
 
 - 第二步：如果超过阈值，则需要 `Flush`，并开启新的 `block`
 
@@ -626,7 +626,7 @@ Status TableBuilder::Finish() {
 
 ![](./../img/20200704121438374.png)
 
-TableCache 缓存的是 Table 对象，每个 DB 一个，它内部使用一个 LRUCache 缓存所有的 table 对象，实际上其内容是文件编号{``file number`, `TableAndFile*``}。
+TableCache 缓存的是 Table 对象，每个 DB 一个，它内部使用一个 LRUCache 缓存所有的 table 对象，实际上其内容是文件编号{`file number`, `TableAndFile*`}。
 
 TableAndFile 是一个拥有2个变量的结构体：`RandomAccessFile*` 和 `Table*`；
 

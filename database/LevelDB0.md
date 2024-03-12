@@ -19,77 +19,45 @@ LevelDB 采用小端
 主要操作为拷贝构造函数
 
 ```cpp
-1
+
 class LEVELDB_EXPORT Slice {
-2
  public:
-3
   Slice() : data_(""), size_(0) {}
-4
   Slice(const char* d, size_t n) : data_(d), size_(n) {}
-5
   Slice(const std::string& s) : data_(s.data()), size_(s.size()) {}
-6
   Slice(const char* s) : data_(s), size_(strlen(s)) {}
-7
   Slice(const Slice&) = default;
-8
   Slice& operator=(const Slice&) = default;
-9
   const char* data() const { return data_; }
-10
   size_t size() const { return size_; }
-11
   bool empty() const { return size_ == 0; }
-12
-​
-13
+
   // Return the ith byte in the referenced data.
-14
   // REQUIRES: n < size()
-15
   char operator[](size_t n) const;
-16
-​
-17
   // Drop the first "n" bytes from this slice.
-18
   void remove_prefix(size_t n);
-19
-​
-20
-  int compare(const Slice& b) const;
-21
-​
-22
+
+  int compare(const Slice& b) const;
   // Return true iff "x" is a prefix of "*this"
-23
   bool starts_with(const Slice& x) const {
-24
     return ((size_ >= x.size_) && (memcmp(data_, x.data_, x.size_) == 0));
-25
   }
-26
-​
-27
  private:
-28
   const char* data_;
-29
   size_t size_;
-30
 };
 ```
 
 成员变量：`data_`（数据地址），`size_`（数据长度）
 
-成员函数：`remove_prefix`，`start_with`，`compare`
+成员函数:
 
-`remove_prefix`，将前 `n bytes` 的数据从 `slice` 中移除
+* `remove_prefix`，将前 `n bytes` 的数据从 `slice` 中移除
 
-`start_with`，判断 `x` 是否是 `slice` 的前缀
+* `start_with`，判断 `x` 是否是 `slice` 的前缀
 
-`compare`，判断两个 `slice` 是否相同以及或者谁是谁的前缀
+* `compare`，判断两个 `slice` 是否相同以及或者谁是谁的前缀
 
 ## Status
 
@@ -100,21 +68,13 @@ class LEVELDB_EXPORT Slice {
 ##### code
 
 ```cpp
-1
 enum Code {
-2
     kOk = 0,
-3
     kNotFound = 1,
-4
     kCorruption = 2,
-5
     kNotSupported = 3,
-6
     kInvalidArgument = 4,
-7
     kIOError = 5
-8
 };
 ```
 
@@ -126,112 +86,43 @@ LevelDB 中分为定长和变长编码，其中变长编码目的是为了减少
 
 ## Option
 
-##### cpp
-1
+```cpp
 struct LEVELDB_EXPORT Options {
-2
+
   Options();
-3
-  const Comparator* comparator;
-4
-  bool create_if_missing = false;
-5
-  bool error_if_exists = false;
-6
-  bool paranoid_checks = false;
-7
-  Env* env;
-8
-  Logger* info_log = nullptr;
-9
-  size_t write_buffer_size = 4 * 1024 * 1024;
-10
-  int max_open_files = 1000;
-11
-  Cache* block_cache = nullptr;
-12
-  size_t block_size = 4 * 1024;
-13
-  int block_restart_interval = 16;
-14
-  size_t max_file_size = 2 * 1024 * 1024;
-15
-  CompressionType compression = kSnappyCompression;
-16
+
+  const Comparator* comparator;   // 被用来表中key比较，默认是字典序
+  bool create_if_missing = false; // 打开数据库，如果数据库不存在，是否创建新的
+  bool error_if_exists = false;   // 打开数据库，如果数据库存在，是否抛出错误
+  bool paranoid_checks = false;   // 如果为 true，则实现将对其正在处理的数据进行积极检查，如果检测到任何错误，则会提前停止。 
+  													    // 这可能会产生不可预见的后果：例如，一个数据库条目的损坏可能导致大量条目变得不可读或整个数据库变得无法打开。
+  Env* env;                       // 封装了平台相关接口
+  Logger* info_log = nullptr;     // db 日志句柄
+  size_t write_buffer_size = 4 * 1024 * 1024; // memtable 的大小(默认 4mb)
+																					// 值大有利于性能提升
+																					// 但是内存可能会存在两份，太大需要注意oom
+																					// 过大刷盘之后，不利于数据恢复
+  int max_open_files = 1000;                  // 允许打开的最大文件数
+  Cache* block_cache = nullptr;               // block 的缓存
+  size_t block_size = 4 * 1024;               // 每个 block 的数据包大小(未压缩)，默认是 4k
+  int block_restart_interval = 16;            // block 中记录完整 key 的间隔
+  size_t max_file_size = 2 * 1024 * 1024;     // 生成新文件的阈值(对于性能较好的文件系统可以调大该阈值，但会增加数据恢复的时间)，默认 2k
+  CompressionType compression = kSnappyCompression; // 数据压缩类型，默认是 kSnappyCompression，压缩速度快
   int zstd_compression_level = 1;
-17
-  bool reuse_logs = false;
-18
-  const FilterPolicy* filter_policy = nullptr;
-19
+  bool reuse_logs = false;                    // 是否复用之前的 MANIFES 和 log files
+  const FilterPolicy* filter_policy = nullptr; // block 块中的过滤策略，支持布隆过滤器
 };
-20
-​
-21
 struct LEVELDB_EXPORT ReadOptions {
-22
-  bool verify_checksums = false;
-23
-  bool fill_cache = true;
-24
-  const Snapshot* snapshot = nullptr;
-25
+  bool verify_checksums = false;              // 是否对从磁盘读取的数据进行校验
+  bool fill_cache = true;										// 读取到 block 数据，是否加入到 cache 中
+  const Snapshot* snapshot = nullptr;				 // 记录的是当前的快照
 };
-26
-​
-27
 struct LEVELDB_EXPORT WriteOptions {
-28
   WriteOptions() = default;
-29
-  bool sync = false;
-30
+  bool sync = false;												// 是否同步刷盘，也就是调用完 write 之后是否需要显式 fsync
 };
-31
-​
-32
 }  // namespace leveldb
-#####
-
-#### Option 通用
-
-1. `Comparator`：被用来表中key比较，默认是字典序
-
-2. `create_if_missing`：打开数据库，如果数据库不存在，是否创建新的
-
-3. `error_if_exists`：打开数据库，如果数据库存在，是否抛出错误
-
-4. `paranoid_checks`：如果为 true，则实现将对其正在处理的数据进行积极检查，如果检测到任何错误，则会提前停止。 这可能会产生不可预见的后果：例如，一个数据库条目的损坏可能导致大量条目变得不可读或整个数据库变得无法打开。
-
-5. `env`：封装了平台相关接口
-
-6. `info_log`：db 日志句柄
-
-7. `write_buffer_size`：memtable 的大小(默认 4mb)
-
-   - 值大有利于性能提升
-
-   - 但是内存可能会存在两份，太大需要注意oom
-   - 过大刷盘之后，不利于数据恢复
-
-8. `max_open_files`：允许打开的最大文件数
-9. `block_cache`：block 的缓存
-10. `block_size`：每个 block 的数据包大小(未压缩)，默认是 4k
-11. `block_restart_interval`：block 中记录完整 key 的间隔
-12. `max_file_size`：生成新文件的阈值(对于性能较好的文件系统可以调大该阈值，但会增加数据恢复的时间)，默认 2k
-13. `compression`：数据压缩类型，默认是 kSnappyCompression，压缩速度快
-14. `reuse_logs`：是否复用之前的 MANIFES 和 log files
-15. `filter_policy`：block 块中的过滤策略，支持布隆过滤器
-
-#### Read Option
-
-1. `verify_checknums`：是否对从磁盘读取的数据进行校验
-2. `fill_cache`：读取到block数据，是否加入到cache中
-3. `snapshot`：记录的是当前的快照
-
-#### Write Option
-
-`sync`：是否同步刷盘，也就是调用完 write 之后是否需要显式 fsync
+```
 
 #### Configs
 
@@ -241,7 +132,7 @@ struct LEVELDB_EXPORT WriteOptions {
 4. `kL0_StopWritesTrigger`：第 0 层 SSTable 到达这个阈值时将会停止写，等到压缩结束，默认值为 12
 5. `kMaxMemCompactLevel`：新压缩产生的 SSTable 允许最多推送至几层(目标层不允许重叠)，默认为 2
 6. `kReadBytesPeriod`：在数据迭代的过程中，也会检查是否满足压缩条件，该参数控制读取的最大字节数
-7. `MaxBytesForLevel` 函数：每一层容量大小为上一层的 10 倍
+7. `MaxBytesForLevel()` ：每一层容量大小为上一层的 10 倍
 8. `MaxGrandParentOverlapBytes`：$level - n$ 和 $leveldb-n+2$ 之间重叠的字节数，默认大小为 $10*max\_file\_size$
 
 ## SkipList
@@ -251,29 +142,16 @@ LevelDB 的线段跳表
 #### Node
 
 ```cpp
-1
 template <typename Key, class Comparator>
-2
 struct SkipList<Key, Comparator>::Node {
-3
   explicit Node(const Key& k) : key(k) {}
-4
   Key const key;
-5
   Node* Next(int n);
-6
   void SetNext(int n, Node* x);
-7
-​
-8
   Node* NoBarrier_Next(int n);
-9
   void NoBarrier_SetNext(int n, Node* x);
-10
  private:
-11
   std::atomic<Node*> next_[1];
-12
 };
 ```
 
@@ -288,47 +166,33 @@ struct SkipList<Key, Comparator>::Node {
 `Skiplist` 中的工具类
 
 ```cpp
-1
 class Iterator {
-2
    public:
-3
     explicit Iterator(const SkipList* list);
-4
     bool Valid() const;
-5
     const Key& key() const;
-6
     void Next();
-7
     void Prev();
-8
     void Seek(const Key& target);
-9
     void SeekToFirst();
-10
     void SeekToLast();
-11
    private:
-12
     const SkipList* list_;
-13
     Node* node_;
-14
   };
 ```
 
-有两个成员变量，SkipList 和当前 Node
+有两个成员变量，SkipList 和当前 Node，帮助我们在 SkipList 中找到相应结点
 
 #### Skiplist
 
-抛开 Iterator 后，和普通的 Skiplist 一样，从 level 高的地方开始找，没找到就跳下一个，下一个如果大于要找的值或者没有下一个，`level` 就下一层，重复上面的步骤直到找到或者 `level == 0` 停止
+抛开 Iterator 后，和普通的 Skiplist 一样，从 Level 高的地方开始找，没找到就跳下一个，下一个如果大于要找的值或者没有下一个，`level` 就下一层，重复上面的步骤直到找到或者 `level == 0` 停止
 
 插入的时候会随机一个 `height` 值，这个值代表 `node` 的高度，和查询相似，但是每次在 `level` 要减一的时候，我们会将当前 `node` 保存起来，在找到最后一个的时候，再从下往上一层一层的添加到 `node` 的后面。
 
 删除类似插入，找到所有下一层是我们删除的 `node` 的节点 `pre`，然后将 `pre.next = node.next`，然后直到 `level == 0`，将 `node[n]` 回收
 
-## 内存管理
+## 内存管理 Arena
 
 #### 成员变量
 
@@ -343,33 +207,17 @@ class Iterator {
 需要注意的是 `AllocateFallback` 函数
 
 ```cpp
-1
 char* Arena::AllocateFallback(size_t bytes) {
-2
   if (bytes > kBlockSize / 4) {
-3
     char* result = AllocateNewBlock(bytes);
-4
     return result;
-5
   }
-6
-​
-7
   alloc_ptr_ = AllocateNewBlock(kBlockSize);
-8
   alloc_bytes_remaining_ = kBlockSize;
-9
-​
-10
   char* result = alloc_ptr_;
-11
   alloc_ptr_ += bytes;
-12
   alloc_bytes_remaining_ -= bytes;
-13
   return result;
-14
 }
 ```
 
@@ -586,29 +434,16 @@ Status WriteBatch::Iterate(Handler* handler) const {
 `WritableFileImpl` 是 `WritaebleFile` 的具体实现，主要利用成员 `FileState*` 进行工作
 
 ```cpp
-1
 class WritableFileImpl : public WritableFile {
-2
  public:
-3
   WritableFileImpl(FileState* file) : file_(file) { file_->Ref(); }
-4
   ~WritableFileImpl() override { file_->Unref(); }
-5
   Status Append(const Slice& data) override { return file_->Append(data); }
-6
   Status Close() override { return Status::OK(); }
-7
   Status Flush() override { return Status::OK(); }
-8
   Status Sync() override { return Status::OK(); }
-9
-​
-10
  private:
-11
   FileState* file_;
-12
 };
 ```
 

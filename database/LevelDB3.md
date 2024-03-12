@@ -65,7 +65,7 @@ Compaction过程中需要对多个文件进行归并操作，并将结果输出�
 
 ## version
 
-`Version`用于表示某次 compaction 或者打开/恢复的数据库状态。为什么需要版本的概念呢？？
+`Version`用于表示某次 compaction 或者打开/恢复的数据库状态。
 
 针对共享的资源，有三种方式：
 

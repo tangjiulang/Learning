@@ -4,7 +4,7 @@
 
 ## 数据模型
 
-BigTable是一个稀疏的、分布式的、持久化存储的多维排序Map。Map的索引是行关键字、列关键字以及时间戳；Map中的每个value都是一个未经解析的byte数组。
+BigTable 是一个稀疏的、分布式的、持久化存储的多维排序Map。Map的索引是行关键字、列关键字以及时间戳；Map中的每个value都是一个未经解析的byte数组。
 
 ```go
 (row:string,column:string,time:int64)->string

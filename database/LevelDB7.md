@@ -65,6 +65,17 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
 
 ## Write
 
+- Writer可能被别的线程执行。此处为LevelDB的一个性能优化，根据一定规则将多个请求合并成一个请求，批量执行写入。
+- DBImpl::MakeRoomForWrite()循环检查当前数据库状态：
+- 如果当前LSM树的Level-0达到 `kL0_SlowdownWritesTrigger` 阈值，延迟所有的Writer 1ms。交出CPU使得compaction线程可以被调度。
+- 当前MemTable的大小未达到write_buffer_size，允许该次写。
+- 如果MemTable达到阈值，且Immutabl MemTable仍然存在，挂牵当前线程等待`background_work_finished_signal_.Wait();`，等到compaction结束，线程被唤醒。
+- 如果当前LSM树的Level-0达到 `kL0_StopWritesTrigger` 阈值，同样的线程被挂起，等地compaction后被唤醒。
+- 上述条件都不满足，则MemTable已满，并且Immutable Table不存在，则将当前Memtable设未Immutable，删除过期的Log文件，生成新的MemTable和Log文件，同时触发compaction，允许写入。
+  `c++ delete log_; delete logfile_; logfile_ = lfile; logfile_number_ = new_log_number; log_ = new log::Writer(lfile); imm_ = mem_; has_imm_.store(true, std::memory_order_release); // 使用写栅栏写入，当前存在immutable Table mem_ = new MemTable(internal_comparator_);`
+- `WriteBatchInternal::InsertInto(write_batch, mem_);`，向MemTable写入是不加锁的，不影响其它线程向队列添加任务。
+- `BuildBatchGroup`会遍历所有队列中的Writer，将它们合并为一个Writer。合并的Batch会设置大小上限。但如果写入的为小文件，会降低Batch大小上限，**避免延缓小文件的写入**。当遍历队列的过程中，如果超过大小上限，则停止合并。
+
 ```cpp
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   Writer w(&mutex_);

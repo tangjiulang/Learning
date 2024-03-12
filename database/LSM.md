@@ -16,19 +16,23 @@
 
 <img src="..\img\793413-20201025165206001-1985214304.png" alt="LSM 树详解- -Finley- - 博客园" style="zoom:50%;" />
 
-#### `memtable`
+#### Memtable
+
+可写 Table
 
 `MemTable` 是在**内存**中的数据结构，用于保存最近更新的数据，会按照 `Key` 有序地组织这些数据，`LSM` 树对于具体如何组织有序地组织数据并没有明确的数据结构定义。
 
 因为数据暂时保存在内存中，内存并不是可靠存储，如果断电会丢失数据，因此通常会通过 `WAL` (Write-ahead logging，预写式日志)的方式来保证数据的可靠性。
 
-#### `immutable memtable`
+#### Immutable memtable
+
+只读 Table
 
 当 `MemTable` 达到一定大小后，会转化成 `Immutable MemTable`。`Immutable MemTable` 是将转 `MemTable` 变为 `SSTable` 的一种中间状态。写操作由新的 `MemTable` 处理，在转存过程中不阻塞数据更新操作。
 
-#### `SStable`
+#### SStable
 
-**有序键值对**集合，是LSM树组在**磁盘**中的数据结构。为了加快 `SSTable` 的读取，可以通过建立 `key` 的索引以及布隆过滤器来加快 `key` 的查找。
+**有序键值对**集合，是 LSM 树组在**磁盘**中的数据结构。为了加快 `SSTable` 的读取，可以通过建立 `key` 的索引以及布隆过滤器来加快 `key` 的查找。
 
 #### 特点
 
