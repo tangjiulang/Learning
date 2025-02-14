@@ -1,0 +1,7 @@
+# 宏定义
+
+#### VERSION
+
+QT_VERSION：Qt 编译器版本，形式为0xMMNNPP
+
+QT_VERSION_CHECK：
