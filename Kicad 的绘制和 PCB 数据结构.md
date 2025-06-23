@@ -196,4 +196,27 @@ struct UPDATE_DEPTH_VISITOR;
 
 ![image-20250616112955138](./img/image-20250616112955138.png)
 
-4. GAL 将图形信息转化为点集信息交给 VERTEX_MANAGER
+4. GAL 将图形信息转化为三角信息交给 VERTEX_MANAGER
+4. 调用 EndDrawing 调用 glDrawArray 和 glDrawElements 进行绘制
+
+## Kicad Add FootPrint 流程
+
+![image-20250619153601496](./img/image-20250619153601496.png)
+
+外部调用 BOARD_EDITOR_CONTROL 中的 PlaceFootprint 函数，将 footprint 信息交给 BOARD_COMMIT 中，然后调用 BOARD_COMMIT 中的 push。
+
+在 push 中，利用 TOOL_MANAGER 中包含的 Board 和 view 信息，将 footprint 添加进入数据库和绘制数据中
+
+![image-20250619154311208](./img/image-20250619154311208.png)
+
+### 数据库添加 FootPrint
+
+1. 先将 Item 对象添加进入数据库中对应的类型的对象数组中
+2. 如果包含子对象，需要将子对象加入 m_itemByIdCache
+
+### 绘制添加 FootPrint
+
+1. 先将子对象加入 PCB_VIEW 中，再将自己加入到 PCB_VIEW 中
+2. 在 VIEW_ITEM 调用 Add 时，会为自己创建一个 m_viewPrivData，用来保存自己在当前视图中的信息，然后将自己加入到 layer 中的 rtree 中
+
+![image-20250619163213109](./img/image-20250619163213109.png)
